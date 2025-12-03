@@ -1,0 +1,18 @@
+/* Minimal fallback styles to ensure a usable UI if Tailwind fails */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+:root{--bg:#f6f8fb;--card:#ffffff;--muted:#6b7280;--accent:#2563eb}
+*{box-sizing:border-box}
+html,body,#root{height:100%;margin:0;font-family:Inter,system-ui,Arial;background:var(--bg);}
+.fallback-root{max-width:980px;margin:32px auto;padding:16px}
+.fallback-header{display:flex;flex-direction:column;gap:6px;margin-bottom:18px}
+.fallback-header h1{font-size:24px;margin:0}
+.muted{color:var(--muted)}
+.fallback-main{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.card{background:var(--card);padding:16px;border-radius:12px;box-shadow:0 6px 18px rgba(15,23,42,0.06)}
+.status{margin-top:8px;padding:8px;border-radius:8px;font-weight:600;display:inline-block}
+.status.ok{background:#ecfeff;color:#0f766e}
+.status.error{background:#fff1f2;color:#991b1b}
+.status.checking{background:#fef3c7;color:#92400e}
+.buttons{display:flex;gap:8px;flex-wrap:wrap}
+.btn{display:inline-block;padding:8px 12px;background:var(--accent);color:#fff;border-radius:8px;text-decoration:none}
+.fallback-footer{color:var(--muted);text-align:center;margin-top:18px;font-size:13px}

@@ -1,0 +1,6 @@
+{
+    "github.copilot.chat.alternateGptPrompt.enabled": true,
+    "github.copilot.chat.anthropic.thinking.enabled": true,
+    "chat.customAgentInSubagent.enabled": true,
+    "chat.checkpoints.showFileChanges": true
+}

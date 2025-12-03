@@ -1,0 +1,11 @@
+Docker artifacts removed
+
+This repository no longer includes a docker-compose-based development
+workflow. The infrastructure folder previously contained a
+`docker-compose.yml` used to run Postgres, backend and frontend. That
+file has been removed — run backend and frontend locally as described in
+the top-level `README.md`.
+
+If you intentionally want to keep compose-based instructions, re-create
+`infra/docker-compose.yml` from your preferred template. Otherwise this
+project is now Docker-free by default.

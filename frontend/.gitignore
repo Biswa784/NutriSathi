@@ -1,0 +1,72 @@
+# -----------------------------------------
+# React / Vite / CRA / Next.js .gitignore
+# -----------------------------------------
+
+# Node modules
+node_modules/
+
+# Build output
+dist/
+build/
+.next/
+out/
+
+# Local environment variables
+.env
+.env.*
+!.env.example
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor settings
+.vscode/
+.idea/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Optional caches
+.cache/
+.parcel-cache/
+.next/cache/
+
+# Dependency directories
+bower_components/
+
+# Testing
+coverage/
+*.lcov
+
+# Temporary files
+*.tmp
+*.swp
+
+# Storybook
+storybook-static/
+
+# Serverless
+.serverless/
+
+# Svelte (if mixing)
+.svelte-kit/
+
+# Firebase / Supabase config
+.firebase/
+.supabase/
+
+# Vite
+vite.config.ts.timestamp*
+*.vite.tsbuildinfo
+
+# TypeScript
+*.tsbuildinfo
+
+# Local development only
+local/
+temp/
+uploads/

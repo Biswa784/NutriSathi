@@ -1,0 +1,56 @@
+name,cuisine,serving_g,calories_kcal,protein_g,carbs_g,fat_g
+Dal Tadka,Indian,200,220,12,26,8
+Roti (Whole Wheat),Indian,50,120,4,22,2
+Chicken Curry,Indian,200,320,28,10,18
+Masala Dosa,Indian,180,280,7,45,8
+Idli,Indian,70,60,2,12,0.5
+Poha,Indian,150,250,5,45,5
+Chana Masala,Indian,200,260,13,35,6
+Paneer Bhurji,Indian,180,300,18,8,22
+Rajma,Indian,200,270,15,40,5
+Fish Curry,Indian,200,290,26,8,16
+Chole Bhature,Indian,250,450,12,58,18
+Aloo Paratha,Indian,120,300,7,42,12
+Butter Chicken,Indian,250,420,32,12,28
+Biryani (Chicken),Indian,300,550,28,65,18
+Samosa,Indian,100,260,5,30,13
+Upma,Indian,150,200,5,35,4
+Vada Pav,Indian,150,320,8,48,12
+Pav Bhaji,Indian,250,380,10,52,14
+Palak Paneer,Indian,200,280,16,12,18
+Khichdi,Indian,200,180,8,32,3
+Egg Curry,Indian,200,280,18,8,20
+Aloo Gobi,Indian,200,160,6,24,6
+Vegetable Pulao,Indian,250,320,8,58,6
+Paneer Tikka,Indian,150,320,22,8,24
+Tandoori Chicken,Indian,200,280,42,2,12
+Rice (White Cooked),Indian,150,200,4,45,0.5
+Dal Makhani,Indian,200,310,14,28,16
+Paratha (Plain),Indian,70,200,5,28,8
+Naan,Indian,90,260,8,45,5
+Raita,Indian,150,80,5,8,3
+Grilled Chicken Breast,International,150,240,46,0,5
+Scrambled Eggs,International,100,140,12,2,10
+Oatmeal,International,200,150,5,27,3
+Greek Yogurt,International,170,100,17,6,0.5
+Salmon (Grilled),International,150,280,34,0,15
+Brown Rice (Cooked),International,150,170,4,36,1.5
+Quinoa (Cooked),International,185,220,8,40,4
+Avocado,International,100,160,2,9,15
+Almonds,International,28,160,6,6,14
+Banana,International,120,105,1,27,0.5
+Apple,International,180,95,0.5,25,0.3
+Orange,International,140,60,1,15,0.2
+Chicken Sandwich,International,200,400,25,42,14
+Caesar Salad,International,250,320,18,12,22
+Pasta (Tomato Sauce),International,300,420,14,72,8
+Pizza (Margherita),International,200,540,22,58,24
+Burger (Beef),International,220,540,28,42,26
+French Fries,International,150,365,4,48,17
+Smoothie Bowl,International,300,280,8,54,6
+Protein Shake,International,250,200,30,10,3
+
+
+
+
+
