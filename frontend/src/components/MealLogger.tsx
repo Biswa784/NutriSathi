@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { FiArrowLeft, FiLoader, FiCheckCircle, FiAlertCircle } from 'react-icons/fi'
+import CalorieAlert from './CalorieAlert'
 
 interface Dish {
   id: string
@@ -21,6 +22,7 @@ interface Meal {
   protein: number
   carbs: number
   fat: number
+  meal_type?: string
 }
 
 interface Message {
@@ -30,17 +32,20 @@ interface Message {
 
 interface MealLoggerProps {
   onBack: () => void
+  onMealLogged?: () => void
 }
 
-export default function MealLogger({ onBack }: MealLoggerProps) {
+export default function MealLogger({ onBack, onMealLogged }: MealLoggerProps) {
   const [dishes, setDishes] = useState<Dish[]>([])
   const [selectedDish, setSelectedDish] = useState<string>('')
   const [servingSize, setServingSize] = useState<number>(100)
+  const [mealType, setMealType] = useState<string>('lunch')
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [message, setMessage] = useState<Message>({ text: '', type: '' })
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
+  const [calorieWarning, setCalorieWarning] = useState<any>(null)
 
   // Mock categories - replace with actual categories from your data
   const categories = ['all', 'breakfast', 'lunch', 'dinner', 'snacks']
@@ -82,6 +87,7 @@ export default function MealLogger({ onBack }: MealLoggerProps) {
     }
 
     setIsSubmitting(true)
+    setCalorieWarning(null) // Clear previous warning
     try {
       const dish = dishes.find(d => d.name === selectedDish)
       if (!dish) {
@@ -96,17 +102,31 @@ export default function MealLogger({ onBack }: MealLoggerProps) {
         calories: Math.round((dish.calories * servingSize) / 100),
         protein: +((dish.protein * servingSize) / 100).toFixed(1),
         carbs: +((dish.carbs * servingSize) / 100).toFixed(1),
-        fat: +((dish.fat * servingSize) / 100).toFixed(1)
+        fat: +((dish.fat * servingSize) / 100).toFixed(1),
+        meal_type: mealType
+      }
+
+      const token = localStorage.getItem('token')
+      const headers: any = { 'Content-Type': 'application/json' }
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
       }
 
       const response = await fetch(import.meta.env.VITE_API_URL ? 
         `${import.meta.env.VITE_API_URL}/meals` : 'http://localhost:8000/meals', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(meal),
       })
 
       if (!response.ok) throw new Error('Failed to log meal')
+      
+      const data = await response.json()
+      
+      // Check if there's a calorie warning
+      if (data.calorie_warning) {
+        setCalorieWarning(data.calorie_warning)
+      }
       
       setMessage({ 
         text: 'Meal logged successfully!', 
@@ -114,6 +134,11 @@ export default function MealLogger({ onBack }: MealLoggerProps) {
       })
       setSelectedDish('')
       setServingSize(100)
+      
+      // Notify parent to refresh meals
+      if (onMealLogged) {
+        onMealLogged()
+      }
     } catch (error) {
       console.error('Error logging meal:', error)
       setMessage({ 
@@ -251,6 +276,29 @@ export default function MealLogger({ onBack }: MealLoggerProps) {
                 
                 {selectedDishData ? (
                   <div className="space-y-4">
+                    {/* Meal Type Selector */}
+                    <div className="bg-white rounded-lg p-4 border border-gray-100">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Meal Type
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {['breakfast', 'lunch', 'dinner', 'snack'].map((type) => (
+                          <button
+                            key={type}
+                            type="button"
+                            onClick={() => setMealType(type)}
+                            className={`px-4 py-2 text-sm rounded-lg capitalize transition-all ${
+                              mealType === type
+                                ? 'bg-primary-500 text-white'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                          >
+                            {type}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
                     <div className="bg-white rounded-lg p-4 border border-gray-100">
                       <div className="flex justify-between items-start mb-3">
                         <div>
@@ -339,6 +387,16 @@ export default function MealLogger({ onBack }: MealLoggerProps) {
           </div>
         </div>
       </div>
+
+      {/* Calorie Warning Alert */}
+      {calorieWarning && (
+        <div className="mt-6">
+          <CalorieAlert 
+            warning={calorieWarning} 
+            onDismiss={() => setCalorieWarning(null)} 
+          />
+        </div>
+      )}
 
       {/* Message Alert */}
       {message.text && (

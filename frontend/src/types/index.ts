@@ -1,4 +1,4 @@
-export type View = 'home' | 'log-meal' | 'history' | 'analytics' | 'gamification' | 'recommendations' | 'settings';
+export type View = 'home' | 'log-meal' | 'history' | 'analytics' | 'gamification' | 'recommendations' | 'settings' | 'mood-recommend';
 
 export interface NavItem {
   name: string;

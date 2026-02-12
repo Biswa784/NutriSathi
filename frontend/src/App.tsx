@@ -1,4 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import NutritionAnalytics from './components/NutritionAnalytics.new';
+import MealHistory from './components/MealHistory';
+import DailySummaryCard from './components/DailySummaryCard';
+import LandingPage from './components/LandingPage';
+import BarcodeScanner from './components/BarcodeScanner';
+import FoodConfirmation from './components/FoodConfirmation';
 
 type Meal = {
   id: number;
@@ -28,7 +34,7 @@ type User = {
   allergies?: string;
 };
 
-type View = 'dashboard' | 'history' | 'analytics' | 'gamification' | 'recommendations' | 'settings' | 'bmi-analyzer';
+type View = 'landing' | 'dashboard' | 'history' | 'analytics' | 'analytics-old' | 'gamification' | 'recommendations' | 'settings' | 'bmi-analyzer' | 'ai-calorie-plan';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
@@ -43,7 +49,7 @@ const App: React.FC = () => {
   const [authLoading, setAuthLoading] = useState(false);
 
   // App state
-  const [view, setView] = useState<View>('dashboard');
+  const [view, setView] = useState<View>('landing');
   const [meals, setMeals] = useState<Meal[]>([]);
   const [dishes, setDishes] = useState<any[]>([]);
   const [stats, setStats] = useState<any | null>(null);
@@ -59,12 +65,20 @@ const App: React.FC = () => {
   const [baseNutrition, setBaseNutrition] = useState<{calories: number, protein: number, carbs: number, fat: number} | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [filteredDishes, setFilteredDishes] = useState<any[]>([]);
+  const [mealsList, setMealsList] = useState<any[]>([]);
+  const [currentMealType, setCurrentMealType] = useState('Breakfast');
   
   // Voice recognition state
   const [isListening, setIsListening] = useState(false);
   const [voiceTranscript, setVoiceTranscript] = useState('');
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [recognition, setRecognition] = useState<any>(null);
+
+  // Barcode scanner state
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+  const [barcodeLoading, setBarcodeLoading] = useState(false);
+  const [barcodeError, setBarcodeError] = useState<string | null>(null);
+  const [scannedFoodData, setScannedFoodData] = useState<any | null>(null);
 
   // Profile editing state
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -110,6 +124,88 @@ const App: React.FC = () => {
     evening_snack: number;
     dinner: number;
   }>({ breakfast: 0, lunch: 0, evening_snack: 0, dinner: 0 });
+
+  // Date filter state for Dashboard
+  const [selectedDateFilter, setSelectedDateFilter] = useState('today');
+  const [customDate, setCustomDate] = useState('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
+  // Tracker-specific date filter state
+  const [trackerDateFilter, setTrackerDateFilter] = useState('today');
+  const [trackerCustomDate, setTrackerCustomDate] = useState('');
+  const [showTrackerDatePicker, setShowTrackerDatePicker] = useState(false);
+  const [showTrackerDropdown, setShowTrackerDropdown] = useState(false);
+
+  // AI Plan expanded state
+  const [showExpandedAIPlan, setShowExpandedAIPlan] = useState(false);
+
+  // Hydration tracker state
+  const [waterGlasses, setWaterGlasses] = useState(0);
+  const waterGoal = 8; // 8 glasses per day
+
+  // Get filtered date based on selection
+  const getFilteredDate = () => {
+    const today = new Date();
+    switch (selectedDateFilter) {
+      case 'today':
+        return today.toISOString().split('T')[0];
+      case 'yesterday':
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        return yesterday.toISOString().split('T')[0];
+      case 'twoDaysAgo':
+        const twoDays = new Date(today);
+        twoDays.setDate(twoDays.getDate() - 2);
+        return twoDays.toISOString().split('T')[0];
+      case 'custom':
+        return customDate || today.toISOString().split('T')[0];
+      default:
+        return today.toISOString().split('T')[0];
+    }
+  };
+
+  // Get tracker filtered date
+  const getTrackerFilteredDate = () => {
+    const today = new Date();
+    switch (trackerDateFilter) {
+      case 'today':
+        return today.toISOString().split('T')[0];
+      case 'yesterday':
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        return yesterday.toISOString().split('T')[0];
+      case 'twoDaysAgo':
+        const twoDays = new Date(today);
+        twoDays.setDate(twoDays.getDate() - 2);
+        return twoDays.toISOString().split('T')[0];
+      case 'custom':
+        return trackerCustomDate || today.toISOString().split('T')[0];
+      default:
+        return today.toISOString().split('T')[0];
+    }
+  };
+
+  // Get tracker date label for display
+  const getTrackerDateLabel = () => {
+    switch (trackerDateFilter) {
+      case 'today': return 'Today';
+      case 'yesterday': return 'Yesterday';
+      case 'twoDaysAgo': return '2 days ago';
+      case 'custom': {
+        if (!trackerCustomDate) return 'Choose a date...';
+        const date = new Date(trackerCustomDate);
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      }
+      default: return 'Today';
+    }
+  };
+
+  // Get formatted date for viewing label
+  const getTrackerFormattedDate = () => {
+    const dateStr = getTrackerFilteredDate();
+    const date = new Date(dateStr + 'T00:00:00');
+    return date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  };
 
   // Initialize voice recognition
   useEffect(() => {
@@ -268,13 +364,34 @@ const App: React.FC = () => {
     }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
   }, [meals]);
 
-  // Calculate consumed calories per meal type from today's meals
-  useEffect(() => {
+  // Calculate today's totals only
+  const todayTotals = useMemo(() => {
     const today = new Date().toDateString();
-    const todaysMeals = meals.filter(meal => {
+    const todayMeals = meals.filter(meal => {
       const mealDate = new Date(meal.timestamp).toDateString();
       return mealDate === today;
     });
+    return todayMeals.reduce((acc, m) => {
+      acc.calories += Number(m.calories ?? 0);
+      acc.protein += Number(m.protein ?? 0);
+      acc.carbs += Number(m.carbs ?? 0);
+      acc.fat += Number(m.fat ?? 0);
+      return acc;
+    }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
+  }, [meals]);
+
+  // Calculate consumed calories per meal type from tracker selected date's meals
+  useEffect(() => {
+    const selectedDate = getTrackerFilteredDate();
+    const selectedDateObj = new Date(selectedDate).toDateString();
+    
+    const selectedDayMeals = meals.filter(meal => {
+      const mealDate = new Date(meal.timestamp).toDateString();
+      return mealDate === selectedDateObj;
+    });
+
+    console.log('🔍 Tracker Date:', selectedDateObj);
+    console.log('🔍 Selected Day Meals:', selectedDayMeals);
 
     const consumed = {
       breakfast: 0,
@@ -283,23 +400,29 @@ const App: React.FC = () => {
       dinner: 0
     };
 
-    todaysMeals.forEach(meal => {
+    selectedDayMeals.forEach(meal => {
       const calories = meal.calories || 0;
-      const mealType = meal.meal_type?.toLowerCase();
+      const mealType = (meal.meal_type || '').toLowerCase().trim();
       
+      console.log('🔍 Meal:', meal.name, '| Type:', meal.meal_type, '| Normalized:', mealType, '| Calories:', calories);
+      
+      // Normalize meal type matching
       if (mealType === 'breakfast') {
         consumed.breakfast += calories;
       } else if (mealType === 'lunch') {
         consumed.lunch += calories;
-      } else if (mealType === 'evening snack' || mealType === 'snack') {
+      } else if (mealType === 'evening snack' || mealType === 'snack' || mealType === 'evening_snack') {
         consumed.evening_snack += calories;
       } else if (mealType === 'dinner') {
         consumed.dinner += calories;
+      } else {
+        console.warn('⚠️ Unmatched meal type:', mealType, 'for meal:', meal.name);
       }
     });
 
+    console.log('📊 Consumed Calories:', consumed);
     setConsumedCalories(consumed);
-  }, [meals]);
+  }, [meals, trackerDateFilter, trackerCustomDate]);
 
   async function submitMeal(payload: any) {
     setLogging(true); setLogError(null);
@@ -313,13 +436,15 @@ const App: React.FC = () => {
         body: JSON.stringify(payload) 
       });
       if (!res.ok) throw new Error('Failed to log');
-      const created = await res.json();
+      const responseData = await res.json();
+      
+      // Handle new response format {meal: {...}, calorie_warning: {...}}
+      const created = responseData.meal || responseData;
       setMeals(prev => [created, ...prev]);
       
-      const s = await fetch(`${API_BASE}/gamification/stats`, { 
-        headers 
-      }).then(r => r.json()).catch(() => null);
-      setStats(s);
+      // Refresh all data including stats
+      await loadAll();
+      
       setShowLogger(false);
       setForm({ name:'', serving_size:100, unit:'g', calories:'', protein:'', carbs:'', fat:'', meal_type: 'Breakfast' });
       setBaseServing(100);
@@ -356,6 +481,72 @@ const App: React.FC = () => {
     } catch (err: any) {
       alert(err?.message ?? 'Failed to delete meal');
     }
+  }
+
+  // Barcode scanning functions
+  async function handleBarcodeScanned(barcode: string) {
+    console.log('🔍 Scanning barcode:', barcode);
+    setShowBarcodeScanner(false);
+    setBarcodeLoading(true);
+    setBarcodeError(null);
+
+    try {
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      console.log('📡 Fetching from:', `${API_BASE}/foods/barcode/${barcode}`);
+      const res = await fetch(`${API_BASE}/foods/barcode/${barcode}`, { 
+        method: 'GET',
+        headers 
+      });
+      
+      console.log('📥 Response status:', res.status);
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ detail: 'Unknown error' }));
+        console.error('❌ Error response:', errorData);
+        
+        if (res.status === 404) {
+          throw new Error('Product not found in database. Try another barcode or manual entry.');
+        }
+        if (res.status === 504) {
+          throw new Error('Request timeout. Please check your internet connection.');
+        }
+        throw new Error(errorData.detail || 'Failed to fetch food data');
+      }
+
+      const foodData = await res.json();
+      console.log('✅ Food data received:', foodData);
+      setScannedFoodData(foodData);
+    } catch (err: any) {
+      console.error('❌ Barcode scan error:', err);
+      setBarcodeError(err?.message ?? 'Failed to scan barcode. Please try again.');
+      setTimeout(() => setBarcodeError(null), 5000);
+    } finally {
+      setBarcodeLoading(false);
+    }
+  }
+
+  async function handleBarcodeMealConfirm(mealType: string, servings: number) {
+    if (!scannedFoodData) {
+      console.error('❌ No scanned food data available');
+      return;
+    }
+
+    const payload = {
+      name: scannedFoodData.name,
+      serving_size: servings * 100, // Assuming 100g per serving
+      unit: 'g',
+      calories: Math.round(scannedFoodData.calories * servings),
+      protein: parseFloat((scannedFoodData.protein * servings).toFixed(1)),
+      carbs: parseFloat((scannedFoodData.carbs * servings).toFixed(1)),
+      fat: parseFloat((scannedFoodData.fat * servings).toFixed(1)),
+      meal_type: mealType.charAt(0).toUpperCase() + mealType.slice(1)
+    };
+
+    console.log('🍽️ Logging barcode meal:', payload);
+    await submitMeal(payload);
+    setScannedFoodData(null);
   }
 
   // Voice recognition functions
@@ -517,6 +708,13 @@ const App: React.FC = () => {
       calculateCalories();
     }
   }, [user?.weight, user?.height, user?.age, user?.gender, user?.activity_level, user?.health_goal]);
+
+  // Clear profile error when switching views or on mount
+  useEffect(() => {
+    // Always clear profile errors when not in settings or when entering settings
+    setProfileError(null);
+    setProfileSuccess(null);
+  }, [view]);
 
   const recommendations = useMemo(() => {
     if (!dishes || dishes.length === 0) return [];
@@ -783,7 +981,19 @@ const App: React.FC = () => {
     }
   }
 
-  // Show auth UI if not authenticated
+  // Show landing page if not authenticated and view is 'landing'
+  if (!isAuthenticated && view === 'landing') {
+    return (
+      <LandingPage
+        onNavigateLogin={() => setView('dashboard')}
+        onNavigateSignup={() => setView('dashboard')}
+        isAuthenticated={isAuthenticated}
+        onNavigateDashboard={() => setView('dashboard')}
+      />
+    );
+  }
+
+  // Show auth UI if not authenticated (and view is not 'landing')
   if (!isAuthenticated) {
     return (
       <div className="auth-container">
@@ -792,6 +1002,22 @@ const App: React.FC = () => {
             <div style={{width:48,height:48,background:'#2563eb',borderRadius:12,margin:'0 auto 12px'}}></div>
             <h2 style={{margin:0,fontSize:24}}>NutriSathi</h2>
             <p style={{color:'#6b7280',margin:'8px 0 0',fontSize:14}}>Your nutrition companion</p>
+          </div>
+
+          <div style={{marginBottom:16,textAlign:'center'}}>
+            <button
+              onClick={() => setView('landing')}
+              style={{
+                background:'transparent',
+                border:'none',
+                color:'#6b7280',
+                fontSize:13,
+                cursor:'pointer',
+                textDecoration:'underline'
+              }}
+            >
+              ← Back to Home
+            </button>
           </div>
 
           <div className="auth-tabs">
@@ -856,7 +1082,15 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="app">
+    <>
+      <style>{`
+        @keyframes shimmer {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(100%); }
+        }
+      `}</style>
+
+      <div className="app">
       <aside className="sidebar">
         <div className="brand">
           <div style={{width:36,height:36,background:'#2563eb',borderRadius:8}}></div>
@@ -887,6 +1121,7 @@ const App: React.FC = () => {
         <nav className="nav">
           <button className={view === 'dashboard' ? 'active' : ''} onClick={()=>setView('dashboard')}>Dashboard</button>
           <button onClick={()=>{ setShowLogger(true); }}>Log Meal</button>
+          <button className={view === 'ai-calorie-plan' ? 'active' : ''} onClick={()=>setView('ai-calorie-plan')} style={{background: view === 'ai-calorie-plan' ? '#667eea' : '', color: view === 'ai-calorie-plan' ? '#fff' : ''}}>🤖 AI Calorie Plan</button>
           <button className={view === 'history' ? 'active' : ''} onClick={()=>setView('history')}>History</button>
           <button className={view === 'analytics' ? 'active' : ''} onClick={()=>setView('analytics')}>Analytics</button>
           <button className={view === 'bmi-analyzer' ? 'active' : ''} onClick={()=>setView('bmi-analyzer')}>BMI Analyzer</button>
@@ -912,20 +1147,90 @@ const App: React.FC = () => {
               }}
               style={{
                 background:'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                color:'#fff',
+                border:'none',
+                borderRadius:'10px',
                 display:'flex',
                 alignItems:'center',
-                gap:6,
-                padding:'10px 16px'
+                gap:'6px',
+                padding:'10px 20px',
+                fontSize:'14px',
+                fontWeight:'600',
+                cursor:'pointer',
+                transition:'transform 0.2s',
+                boxShadow:'0 2px 8px rgba(16, 185, 129, 0.3)'
               }}
+              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+              onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
               title="Log meal with voice"
             >
-              <span style={{fontSize:18}}>🎤</span>
+              <span style={{fontSize:'18px'}}>🎤</span>
               <span>Voice Log</span>
             </button>
-            <button className="btn" onClick={() => setShowLogger(true)}>+ Log Meal</button>
+            <button 
+              onClick={() => setShowBarcodeScanner(true)}
+              style={{
+                background:'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                color:'#fff',
+                border:'none',
+                borderRadius:'10px',
+                display:'flex',
+                alignItems:'center',
+                gap:'6px',
+                padding:'10px 20px',
+                fontSize:'14px',
+                fontWeight:'600',
+                cursor:'pointer',
+                transition:'transform 0.2s',
+                boxShadow:'0 2px 8px rgba(16, 185, 129, 0.3)'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+              onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+              title="Scan barcode to log meal"
+            >
+              <span style={{fontSize:'18px'}}>📷</span>
+              <span>Scan Barcode</span>
+            </button>
+            <button 
+              onClick={() => setShowLogger(true)}
+              style={{
+                background:'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                color:'#fff',
+                border:'none',
+                borderRadius:'10px',
+                display:'flex',
+                alignItems:'center',
+                gap:'6px',
+                padding:'10px 20px',
+                fontSize:'14px',
+                fontWeight:'600',
+                cursor:'pointer',
+                transition:'transform 0.2s',
+                boxShadow:'0 2px 8px rgba(102, 126, 234, 0.3)'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+              onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+            >
+              <span style={{fontSize:'18px'}}>➕</span>
+              <span>Log Meal</span>
+            </button>
             {error && <div style={{background:'#fff1f2',color:'#991b1b',padding:'6px 10px',borderRadius:8}}>{error}</div>}
             {!error && stats && (
-              <div style={{fontSize:12,color:'#6b7280'}}>Level {stats.level} • XP {stats.currentXP}/{stats.xpToNextLevel}</div>
+              <div style={{
+                display:'flex',
+                alignItems:'center',
+                gap:'8px',
+                padding:'10px 20px',
+                background:'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+                borderRadius:'10px',
+                fontSize:'14px',
+                fontWeight:'600',
+                color:'#92400e',
+                boxShadow:'0 2px 8px rgba(251, 191, 36, 0.3)'
+              }}>
+                <span style={{fontSize:'18px'}}>🔥</span>
+                <span>Level {stats.level} • XP {stats.currentXP}/{stats.xpToNextLevel}</span>
+              </div>
             )}
           </div>
         </div>
@@ -933,43 +1238,22 @@ const App: React.FC = () => {
         {/* Content */}
         {view === 'dashboard' && (
           <>
-            {/* Stats Overview */}
-            <div className="grid" style={{gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))'}}>
-              <div className="card" style={{background:'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',color:'#fff'}}>
-                <div style={{opacity:0.9,fontSize:13,marginBottom:8}}>Total Calories</div>
-                <div style={{fontSize:28,fontWeight:700}}>{totals.calories}</div>
-                <div style={{opacity:0.8,fontSize:12,marginTop:4}}>kcal today</div>
-                {user?.health_goal === 'Weight Loss' && (
-                  <div style={{opacity:0.9,fontSize:11,marginTop:6,background:'rgba(255,255,255,0.2)',padding:'4px 8px',borderRadius:4,display:'inline-block'}}>
-                    Target: ~1500-1800 kcal
-                  </div>
-                )}
-              </div>
-
-              <div className="card" style={{background:'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',color:'#fff'}}>
-                <div style={{opacity:0.9,fontSize:13,marginBottom:8}}>Protein</div>
-                <div style={{fontSize:28,fontWeight:700}}>{totals.protein}g</div>
-                <div style={{opacity:0.8,fontSize:12,marginTop:4}}>
-                  {user?.weight ? `${Math.round((totals.protein / user.weight) * 10) / 10}g per kg` : 'today'}
-                </div>
-              </div>
-
-              <div className="card" style={{background:'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',color:'#fff'}}>
-                <div style={{opacity:0.9,fontSize:13,marginBottom:8}}>Meals Logged</div>
-                <div style={{fontSize:28,fontWeight:700}}>{meals.length}</div>
-                <div style={{opacity:0.8,fontSize:12,marginTop:4}}>
-                  {stats ? `Level ${stats.level} • ${stats.currentStreak}d streak` : 'all time'}
-                </div>
-              </div>
-
-              <div className="card" style={{background:'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',color:'#fff'}}>
-                <div style={{opacity:0.9,fontSize:13,marginBottom:8}}>Progress</div>
-                <div style={{fontSize:28,fontWeight:700}}>{stats?.currentXP ?? 0} XP</div>
-                <div style={{opacity:0.8,fontSize:12,marginTop:4}}>
-                  {stats ? `${stats.xpToNextLevel - stats.currentXP} to Level ${stats.level + 1}` : 'Keep logging!'}
-                </div>
-              </div>
-            </div>
+            {/* Daily Health Summary */}
+            <DailySummaryCard
+              userName={user?.name}
+              totalCaloriesToday={todayTotals.calories}
+              calorieTarget={calorieData?.tdee ?? 2200}
+              macros={{
+                protein: todayTotals.protein,
+                carbs: todayTotals.carbs,
+                fat: todayTotals.fat
+              }}
+              mealsLogged={meals.filter(m => new Date(m.timestamp).toDateString() === new Date().toDateString()).length}
+              level={stats?.level}
+              currentXP={stats?.currentXP}
+              xpToNextLevel={stats?.xpToNextLevel}
+              onViewReport={() => setView('analytics')}
+            />
 
             {/* AI Daily Calorie Calculator */}
             {!calorieData && user && (!user.weight || !user.height || !user.age || !user.gender || !user.activity_level || !user.health_goal) && (
@@ -997,7 +1281,7 @@ const App: React.FC = () => {
                   </ul>
                 </div>
                 <button
-                  onClick={() => setActiveTab('profile')}
+                  onClick={() => setView('settings')}
                   className="btn"
                   style={{background:'#f59e0b',color:'#fff',padding:'10px 16px',fontSize:14,fontWeight:600}}
                 >
@@ -1006,674 +1290,253 @@ const App: React.FC = () => {
               </div>
             )}
             
-            {calorieData && (
-              <div className="card" style={{marginTop:16,background:'linear-gradient(135deg, #667eea20 0%, #764ba210 100%)',border:'2px solid #667eea'}}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'start',marginBottom:16}}>
-                  <div>
-                    <h3 style={{margin:0,color:'#667eea',fontSize:20}}>🤖 AI Daily Calorie Plan</h3>
-                    <div style={{fontSize:13,color:'#6b7280',marginTop:4}}>
-                      Scientifically calculated using Mifflin-St Jeor formula
+            {/* THREE COMPACT CARDS IN A ROW - Dashboard Top Section */}
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:16,marginTop:16}}>
+              
+              {/* CARD 1: AI Daily Calorie Plan */}
+              <div 
+                onClick={() => calorieData ? setShowExpandedAIPlan(true) : setView('settings')}
+                className="card" 
+                style={{
+                  background:'linear-gradient(135deg, #e6edff 0%, #d9e4ff 100%)',
+                  border:'2px solid #667eea',
+                  borderRadius:16,
+                  padding:20,
+                  cursor:'pointer',
+                  transition:'all 0.3s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 4px 16px rgba(102,126,234,0.2)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              >
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16}}>
+                  <div style={{display:'flex',alignItems:'center',gap:10}}>
+                    <div style={{width:48,height:48,borderRadius:12,background:'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24}}>🤖</div>
+                    <div>
+                      <h3 style={{margin:0,fontSize:16,fontWeight:700,color:'#667eea'}}>AI Daily Calorie Plan</h3>
+                      <div style={{fontSize:11,color:'#6b7280',marginTop:2}}>See today's calorie target, BMR, TDEE and adjustment</div>
                     </div>
                   </div>
                   <button
-                    onClick={calculateCalories}
-                    className="btn"
-                    style={{padding:'6px 12px',fontSize:12,background:'#667eea'}}
-                    disabled={calorieLoading}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      calorieData ? setShowExpandedAIPlan(true) : setView('settings');
+                    }}
+                    style={{
+                      padding:'8px 16px',
+                      background:'#667eea',
+                      color:'#fff',
+                      border:'none',
+                      borderRadius:8,
+                      fontSize:13,
+                      fontWeight:600,
+                      cursor:'pointer',
+                      whiteSpace:'nowrap'
+                    }}
                   >
-                    {calorieLoading ? 'Calculating...' : '🔄 Refresh'}
+                    View Plan →
                   </button>
                 </div>
 
-                {/* Main Calorie Targets */}
-                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(150px, 1fr))',gap:12,marginBottom:16}}>
-                  <div style={{padding:16,background:'#fff',borderRadius:10,textAlign:'center',border:'2px solid #667eea'}}>
-                    <div style={{fontSize:13,color:'#6b7280',marginBottom:6}}>Daily Target</div>
-                    <div style={{fontSize:32,fontWeight:700,color:'#667eea'}}>{calorieData.daily_calories}</div>
-                    <div style={{fontSize:12,color:'#6b7280'}}>calories</div>
-                  </div>
-                  <div style={{padding:16,background:'#fff',borderRadius:10,textAlign:'center'}}>
-                    <div style={{fontSize:13,color:'#6b7280',marginBottom:6}}>BMR</div>
-                    <div style={{fontSize:28,fontWeight:700,color:'#10b981'}}>{calorieData.bmr}</div>
-                    <div style={{fontSize:11,color:'#6b7280'}}>calories at rest</div>
-                  </div>
-                  <div style={{padding:16,background:'#fff',borderRadius:10,textAlign:'center'}}>
-                    <div style={{fontSize:13,color:'#6b7280',marginBottom:6}}>TDEE</div>
-                    <div style={{fontSize:28,fontWeight:700,color:'#3b82f6'}}>{calorieData.tdee}</div>
-                    <div style={{fontSize:11,color:'#6b7280'}}>maintenance</div>
-                  </div>
-                  <div style={{padding:16,background:'#fff',borderRadius:10,textAlign:'center'}}>
-                    <div style={{fontSize:13,color:'#6b7280',marginBottom:6}}>Adjustment</div>
-                    <div style={{fontSize:28,fontWeight:700,color:calorieData.adjustment < 0 ? '#ef4444' : '#10b981'}}>
-                      {calorieData.adjustment > 0 ? '+' : ''}{calorieData.adjustment}
+                {calorieData ? (
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(4, 1fr)',gap:12}}>
+                    <div style={{background:'#fff',borderRadius:12,padding:16,border:'2px solid #667eea',textAlign:'center'}}>
+                      <div style={{fontSize:11,color:'#6b7280',marginBottom:6}}>Daily Target</div>
+                      <div style={{fontSize:24,fontWeight:700,color:'#667eea',lineHeight:1}}>{calorieData.daily_calories}</div>
+                      <div style={{fontSize:11,color:'#6b7280',marginTop:4}}>kcal</div>
                     </div>
-                    <div style={{fontSize:11,color:'#6b7280'}}>for goal</div>
+                    <div style={{background:'#fff',borderRadius:12,padding:16,border:'1px solid #e5e7eb',textAlign:'center'}}>
+                      <div style={{fontSize:11,color:'#6b7280',marginBottom:6}}>BMR</div>
+                      <div style={{fontSize:24,fontWeight:700,color:'#10b981',lineHeight:1}}>{calorieData.bmr}</div>
+                      <div style={{fontSize:11,color:'#6b7280',marginTop:4}}>at rest</div>
+                    </div>
+                    <div style={{background:'#fff',borderRadius:12,padding:16,border:'1px solid #e5e7eb',textAlign:'center'}}>
+                      <div style={{fontSize:11,color:'#6b7280',marginBottom:6}}>TDEE</div>
+                      <div style={{fontSize:24,fontWeight:700,color:'#3b82f6',lineHeight:1}}>{calorieData.tdee}</div>
+                      <div style={{fontSize:11,color:'#6b7280',marginTop:4}}>maintain</div>
+                    </div>
+                    <div style={{background:'#fff',borderRadius:12,padding:16,border:'1px solid #e5e7eb',textAlign:'center'}}>
+                      <div style={{fontSize:11,color:'#6b7280',marginBottom:6}}>Adjustment</div>
+                      <div style={{fontSize:24,fontWeight:700,color:calorieData.adjustment < 0 ? '#ef4444' : '#10b981',lineHeight:1}}>
+                        {calorieData.adjustment > 0 ? '+' : ''}{calorieData.adjustment}
+                      </div>
+                      <div style={{fontSize:11,color:'#6b7280',marginTop:4}}>for goal</div>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div style={{textAlign:'center',padding:'30px 0',color:'#6b7280',fontSize:14}}>
+                    Complete your profile to unlock your personalized AI calorie plan
+                  </div>
+                )}
+              </div>
 
-                {/* Meal Distribution with Progress Bars - UPGRADED PREMIUM UI */}
-                <div style={{background:'linear-gradient(135deg, #ffffff 0%, #f9fafb 100%)',padding:20,borderRadius:16,marginBottom:20,boxShadow:'0 4px 20px rgba(0,0,0,0.08)'}}>
-                  <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
-                    <div style={{width:40,height:40,borderRadius:12,background:'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 4px 15px rgba(102,126,234,0.4)'}}>
-                      <span style={{fontSize:20}}>📊</span>
-                    </div>
-                    <h4 style={{margin:0,fontSize:20,fontWeight:700,background:'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundClip:'text'}}>
-                      Meal-wise Calorie Tracker
-                    </h4>
-                  </div>
-                  <div style={{display:'grid',gap:16}}>
-                    {/* Breakfast Progress Bar - PREMIUM */}
-                    {(() => {
-                      const target = calorieData.meal_calories.breakfast;
-                      const consumed = consumedCalories.breakfast;
-                      const remaining = Math.max(0, target - consumed);
-                      const percentage = Math.min(100, (consumed / target) * 100);
-                      const isOver = consumed > target;
-                      
-                      return (
-                        <div style={{
-                          padding:16,
-                          background:isOver ? 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)' : 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
-                          borderRadius:16,
-                          border:isOver ? '2px solid #dc2626' : '2px solid #f59e0b',
-                          boxShadow:isOver ? '0 8px 25px rgba(220,38,38,0.25)' : '0 8px 25px rgba(245,158,11,0.25)',
-                          transition:'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-                          position:'relative',
-                          overflow:'hidden'
-                        }}>
-                          {/* Animated glow effect */}
-                          <div style={{position:'absolute',top:0,left:'-100%',width:'200%',height:'100%',background:'linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)',animation:'shimmer 3s infinite',pointerEvents:'none'}} />
-                          
-                          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,position:'relative',zIndex:1}}>
-                            <div style={{display:'flex',alignItems:'center',gap:10}}>
-                              <div style={{width:44,height:44,borderRadius:12,background:isOver ? 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)' : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 4px 15px rgba(245,158,11,0.4)',fontSize:22}}>
-                                🌅
-                              </div>
-                              <div>
-                                <div style={{display:'flex',alignItems:'center',gap:8}}>
-                                  <span style={{fontWeight:700,fontSize:16,color:'#92400e'}}>Breakfast</span>
-                                  <span style={{fontSize:11,background:'rgba(255,255,255,0.9)',color:'#92400e',padding:'3px 8px',borderRadius:6,fontWeight:600,boxShadow:'0 2px 8px rgba(0,0,0,0.1)'}}>
-                                    {calorieData.meal_split_percentages.breakfast}% of daily
-                                  </span>
-                                </div>
-                                <div style={{fontSize:12,color:'#78350f',marginTop:2,fontWeight:500}}>
-                                  Morning fuel & energy
-                                </div>
-                              </div>
-                            </div>
-                            <div style={{textAlign:'right'}}>
-                              <div style={{fontSize:20,fontWeight:800,color:isOver ? '#dc2626' : '#92400e',letterSpacing:'-0.5px'}}>
-                                {consumed}
-                                <span style={{fontSize:14,fontWeight:600,color:'#78350f',marginLeft:2}}>/ {target}</span>
-                              </div>
-                              <div style={{fontSize:11,color:'#78350f',fontWeight:600,marginTop:2}}>
-                                {Math.round(percentage)}% consumed
-                              </div>
-                            </div>
-                          </div>
-                          
-                          {/* Premium Progress Bar */}
-                          <div style={{position:'relative',height:24,background:'rgba(251,191,36,0.2)',borderRadius:12,overflow:'hidden',boxShadow:'inset 0 2px 4px rgba(0,0,0,0.1)',marginBottom:10}}>
-                            <div style={{
-                              position:'absolute',
-                              left:0,
-                              top:0,
-                              bottom:0,
-                              width:`${percentage}%`,
-                              background:isOver ? 'linear-gradient(90deg, #dc2626 0%, #ef4444 50%, #dc2626 100%)' : percentage < 50 ? 'linear-gradient(90deg, #10b981 0%, #34d399 100%)' : percentage < 80 ? 'linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%)' : 'linear-gradient(90deg, #ef4444 0%, #f87171 100%)',
-                              borderRadius:12,
-                              transition:'width 0.6s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s ease',
-                              boxShadow:isOver ? '0 2px 10px rgba(220,38,38,0.5)' : percentage < 50 ? '0 2px 10px rgba(16,185,129,0.5)' : percentage < 80 ? '0 2px 10px rgba(245,158,11,0.5)' : '0 2px 10px rgba(239,68,68,0.5)',
-                              overflow:'hidden'
-                            }}>
-                              {/* Animated shine effect on bar */}
-                              <div style={{position:'absolute',top:0,left:'-100%',width:'200%',height:'100%',background:'linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)',animation:'shimmer 2s infinite'}} />
-                            </div>
-                          </div>
-                          
-                          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',position:'relative',zIndex:1}}>
-                            <div style={{fontSize:13,color:isOver ? '#dc2626' : '#065f46',fontWeight:600,display:'flex',alignItems:'center',gap:6}}>
-                              {isOver ? (
-                                <>
-                                  <span style={{fontSize:16}}>⚠️</span>
-                                  <span>Over by <strong>{consumed - target} kcal</strong></span>
-                                </>
-                              ) : (
-                                <>
-                                  <span style={{fontSize:16}}>✅</span>
-                                  <span><strong>{remaining} kcal</strong> remaining</span>
-                                </>
-                              )}
-                            </div>
-                            <div style={{fontSize:11,color:'#78350f',fontWeight:600,background:'rgba(255,255,255,0.6)',padding:'4px 10px',borderRadius:8}}>
-                              {isOver ? 'EXCEED' : percentage > 90 ? 'ALMOST THERE' : percentage > 50 ? 'ON TRACK' : 'PLENTY LEFT'}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })()}
-                    
-                    {/* Lunch Progress Bar - PREMIUM */}
-                    {(() => {
-                      const target = calorieData.meal_calories.lunch;
-                      const consumed = consumedCalories.lunch;
-                      const remaining = Math.max(0, target - consumed);
-                      const percentage = Math.min(100, (consumed / target) * 100);
-                      const isOver = consumed > target;
-                      
-                      return (
-                        <div style={{
-                          padding:16,
-                          background:isOver ? 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)' : 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)',
-                          borderRadius:16,
-                          border:isOver ? '2px solid #dc2626' : '2px solid #3b82f6',
-                          boxShadow:isOver ? '0 8px 25px rgba(220,38,38,0.25)' : '0 8px 25px rgba(59,130,246,0.25)',
-                          transition:'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-                          position:'relative',
-                          overflow:'hidden'
-                        }}>
-                          <div style={{position:'absolute',top:0,left:'-100%',width:'200%',height:'100%',background:'linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)',animation:'shimmer 3s infinite',pointerEvents:'none'}} />
-                          
-                          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,position:'relative',zIndex:1}}>
-                            <div style={{display:'flex',alignItems:'center',gap:10}}>
-                              <div style={{width:44,height:44,borderRadius:12,background:isOver ? 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)' : 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 4px 15px rgba(59,130,246,0.4)',fontSize:22}}>
-                                ☀️
-                              </div>
-                              <div>
-                                <div style={{display:'flex',alignItems:'center',gap:8}}>
-                                  <span style={{fontWeight:700,fontSize:16,color:'#1e40af'}}>Lunch</span>
-                                  <span style={{fontSize:11,background:'rgba(255,255,255,0.9)',color:'#1e40af',padding:'3px 8px',borderRadius:6,fontWeight:600,boxShadow:'0 2px 8px rgba(0,0,0,0.1)'}}>
-                                    {calorieData.meal_split_percentages.lunch}% of daily
-                                  </span>
-                                </div>
-                                <div style={{fontSize:12,color:'#1e3a8a',marginTop:2,fontWeight:500}}>
-                                  Main meal & nutrition
-                                </div>
-                              </div>
-                            </div>
-                            <div style={{textAlign:'right'}}>
-                              <div style={{fontSize:20,fontWeight:800,color:isOver ? '#dc2626' : '#1e40af',letterSpacing:'-0.5px'}}>
-                                {consumed}
-                                <span style={{fontSize:14,fontWeight:600,color:'#1e3a8a',marginLeft:2}}>/ {target}</span>
-                              </div>
-                              <div style={{fontSize:11,color:'#1e3a8a',fontWeight:600,marginTop:2}}>
-                                {Math.round(percentage)}% consumed
-                              </div>
-                            </div>
-                          </div>
-                          
-                          <div style={{position:'relative',height:24,background:'rgba(147,197,253,0.2)',borderRadius:12,overflow:'hidden',boxShadow:'inset 0 2px 4px rgba(0,0,0,0.1)',marginBottom:10}}>
-                            <div style={{
-                              position:'absolute',
-                              left:0,
-                              top:0,
-                              bottom:0,
-                              width:`${percentage}%`,
-                              background:isOver ? 'linear-gradient(90deg, #dc2626 0%, #ef4444 50%, #dc2626 100%)' : percentage < 50 ? 'linear-gradient(90deg, #10b981 0%, #34d399 100%)' : percentage < 80 ? 'linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%)' : 'linear-gradient(90deg, #ef4444 0%, #f87171 100%)',
-                              borderRadius:12,
-                              transition:'width 0.6s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s ease',
-                              boxShadow:isOver ? '0 2px 10px rgba(220,38,38,0.5)' : percentage < 50 ? '0 2px 10px rgba(16,185,129,0.5)' : percentage < 80 ? '0 2px 10px rgba(59,130,246,0.5)' : '0 2px 10px rgba(239,68,68,0.5)',
-                              overflow:'hidden'
-                            }}>
-                              <div style={{position:'absolute',top:0,left:'-100%',width:'200%',height:'100%',background:'linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)',animation:'shimmer 2s infinite'}} />
-                            </div>
-                          </div>
-                          
-                          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',position:'relative',zIndex:1}}>
-                            <div style={{fontSize:13,color:isOver ? '#dc2626' : '#065f46',fontWeight:600,display:'flex',alignItems:'center',gap:6}}>
-                              {isOver ? (
-                                <>
-                                  <span style={{fontSize:16}}>⚠️</span>
-                                  <span>Over by <strong>{consumed - target} kcal</strong></span>
-                                </>
-                              ) : (
-                                <>
-                                  <span style={{fontSize:16}}>✅</span>
-                                  <span><strong>{remaining} kcal</strong> remaining</span>
-                                </>
-                              )}
-                            </div>
-                            <div style={{fontSize:11,color:'#1e3a8a',fontWeight:600,background:'rgba(255,255,255,0.6)',padding:'4px 10px',borderRadius:8}}>
-                              {isOver ? 'EXCEED' : percentage > 90 ? 'ALMOST THERE' : percentage > 50 ? 'ON TRACK' : 'PLENTY LEFT'}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })()}
-                    
-                    {/* Evening Snack Progress Bar - PREMIUM */}
-                    {(() => {
-                      const target = calorieData.meal_calories.evening_snack;
-                      const consumed = consumedCalories.evening_snack;
-                      const remaining = Math.max(0, target - consumed);
-                      const percentage = Math.min(100, (consumed / target) * 100);
-                      const isOver = consumed > target;
-                      
-                      return (
-                        <div style={{
-                          padding:16,
-                          background:isOver ? 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)' : 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)',
-                          borderRadius:16,
-                          border:isOver ? '2px solid #dc2626' : '2px solid #10b981',
-                          boxShadow:isOver ? '0 8px 25px rgba(220,38,38,0.25)' : '0 8px 25px rgba(16,185,129,0.25)',
-                          transition:'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-                          position:'relative',
-                          overflow:'hidden'
-                        }}>
-                          <div style={{position:'absolute',top:0,left:'-100%',width:'200%',height:'100%',background:'linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)',animation:'shimmer 3s infinite',pointerEvents:'none'}} />
-                          
-                          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,position:'relative',zIndex:1}}>
-                            <div style={{display:'flex',alignItems:'center',gap:10}}>
-                              <div style={{width:44,height:44,borderRadius:12,background:isOver ? 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 4px 15px rgba(16,185,129,0.4)',fontSize:22}}>
-                                🍵
-                              </div>
-                              <div>
-                                <div style={{display:'flex',alignItems:'center',gap:8}}>
-                                  <span style={{fontWeight:700,fontSize:16,color:'#065f46'}}>Evening Snack</span>
-                                  <span style={{fontSize:11,background:'rgba(255,255,255,0.9)',color:'#065f46',padding:'3px 8px',borderRadius:6,fontWeight:600,boxShadow:'0 2px 8px rgba(0,0,0,0.1)'}}>
-                                    {calorieData.meal_split_percentages.evening_snack}% of daily
-                                  </span>
-                                </div>
-                                <div style={{fontSize:12,color:'#064e3b',marginTop:2,fontWeight:500}}>
-                                  Light refreshment
-                                </div>
-                              </div>
-                            </div>
-                            <div style={{textAlign:'right'}}>
-                              <div style={{fontSize:20,fontWeight:800,color:isOver ? '#dc2626' : '#065f46',letterSpacing:'-0.5px'}}>
-                                {consumed}
-                                <span style={{fontSize:14,fontWeight:600,color:'#064e3b',marginLeft:2}}>/ {target}</span>
-                              </div>
-                              <div style={{fontSize:11,color:'#064e3b',fontWeight:600,marginTop:2}}>
-                                {Math.round(percentage)}% consumed
-                              </div>
-                            </div>
-                          </div>
-                          
-                          <div style={{position:'relative',height:24,background:'rgba(110,231,183,0.2)',borderRadius:12,overflow:'hidden',boxShadow:'inset 0 2px 4px rgba(0,0,0,0.1)',marginBottom:10}}>
-                            <div style={{
-                              position:'absolute',
-                              left:0,
-                              top:0,
-                              bottom:0,
-                              width:`${percentage}%`,
-                              background:isOver ? 'linear-gradient(90deg, #dc2626 0%, #ef4444 50%, #dc2626 100%)' : percentage < 50 ? 'linear-gradient(90deg, #10b981 0%, #34d399 100%)' : percentage < 80 ? 'linear-gradient(90deg, #10b981 0%, #14b8a6 100%)' : 'linear-gradient(90deg, #ef4444 0%, #f87171 100%)',
-                              borderRadius:12,
-                              transition:'width 0.6s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s ease',
-                              boxShadow:isOver ? '0 2px 10px rgba(220,38,38,0.5)' : '0 2px 10px rgba(16,185,129,0.5)',
-                              overflow:'hidden'
-                            }}>
-                              <div style={{position:'absolute',top:0,left:'-100%',width:'200%',height:'100%',background:'linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)',animation:'shimmer 2s infinite'}} />
-                            </div>
-                          </div>
-                          
-                          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',position:'relative',zIndex:1}}>
-                            <div style={{fontSize:13,color:isOver ? '#dc2626' : '#065f46',fontWeight:600,display:'flex',alignItems:'center',gap:6}}>
-                              {isOver ? (
-                                <>
-                                  <span style={{fontSize:16}}>⚠️</span>
-                                  <span>Over by <strong>{consumed - target} kcal</strong></span>
-                                </>
-                              ) : (
-                                <>
-                                  <span style={{fontSize:16}}>✅</span>
-                                  <span><strong>{remaining} kcal</strong> remaining</span>
-                                </>
-                              )}
-                            </div>
-                            <div style={{fontSize:11,color:'#064e3b',fontWeight:600,background:'rgba(255,255,255,0.6)',padding:'4px 10px',borderRadius:8}}>
-                              {isOver ? 'EXCEED' : percentage > 90 ? 'ALMOST THERE' : percentage > 50 ? 'ON TRACK' : 'PLENTY LEFT'}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })()}
-                    
-                    {/* Dinner Progress Bar - PREMIUM */}
-                    {(() => {
-                      const target = calorieData.meal_calories.dinner;
-                      const consumed = consumedCalories.dinner;
-                      const remaining = Math.max(0, target - consumed);
-                      const percentage = Math.min(100, (consumed / target) * 100);
-                      const isOver = consumed > target;
-                      
-                      return (
-                        <div style={{
-                          padding:16,
-                          background:isOver ? 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)' : 'linear-gradient(135deg, #e9d5ff 0%, #ddd6fe 100%)',
-                          borderRadius:16,
-                          border:isOver ? '2px solid #dc2626' : '2px solid #8b5cf6',
-                          boxShadow:isOver ? '0 8px 25px rgba(220,38,38,0.25)' : '0 8px 25px rgba(139,92,246,0.25)',
-                          transition:'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-                          position:'relative',
-                          overflow:'hidden'
-                        }}>
-                          <div style={{position:'absolute',top:0,left:'-100%',width:'200%',height:'100%',background:'linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)',animation:'shimmer 3s infinite',pointerEvents:'none'}} />
-                          
-                          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,position:'relative',zIndex:1}}>
-                            <div style={{display:'flex',alignItems:'center',gap:10}}>
-                              <div style={{width:44,height:44,borderRadius:12,background:isOver ? 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)' : 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 4px 15px rgba(139,92,246,0.4)',fontSize:22}}>
-                                🌙
-                              </div>
-                              <div>
-                                <div style={{display:'flex',alignItems:'center',gap:8}}>
-                                  <span style={{fontWeight:700,fontSize:16,color:'#5b21b6'}}>Dinner</span>
-                                  <span style={{fontSize:11,background:'rgba(255,255,255,0.9)',color:'#5b21b6',padding:'3px 8px',borderRadius:6,fontWeight:600,boxShadow:'0 2px 8px rgba(0,0,0,0.1)'}}>
-                                    {calorieData.meal_split_percentages.dinner}% of daily
-                                  </span>
-                                </div>
-                                <div style={{fontSize:12,color:'#4c1d95',marginTop:2,fontWeight:500}}>
-                                  Evening nourishment
-                                </div>
-                              </div>
-                            </div>
-                            <div style={{textAlign:'right'}}>
-                              <div style={{fontSize:20,fontWeight:800,color:isOver ? '#dc2626' : '#5b21b6',letterSpacing:'-0.5px'}}>
-                                {consumed}
-                                <span style={{fontSize:14,fontWeight:600,color:'#4c1d95',marginLeft:2}}>/ {target}</span>
-                              </div>
-                              <div style={{fontSize:11,color:'#4c1d95',fontWeight:600,marginTop:2}}>
-                                {Math.round(percentage)}% consumed
-                              </div>
-                            </div>
-                          </div>
-                          
-                          <div style={{position:'relative',height:24,background:'rgba(196,181,253,0.2)',borderRadius:12,overflow:'hidden',boxShadow:'inset 0 2px 4px rgba(0,0,0,0.1)',marginBottom:10}}>
-                            <div style={{
-                              position:'absolute',
-                              left:0,
-                              top:0,
-                              bottom:0,
-                              width:`${percentage}%`,
-                              background:isOver ? 'linear-gradient(90deg, #dc2626 0%, #ef4444 50%, #dc2626 100%)' : percentage < 50 ? 'linear-gradient(90deg, #10b981 0%, #34d399 100%)' : percentage < 80 ? 'linear-gradient(90deg, #8b5cf6 0%, #a78bfa 100%)' : 'linear-gradient(90deg, #ef4444 0%, #f87171 100%)',
-                              borderRadius:12,
-                              transition:'width 0.6s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s ease',
-                              boxShadow:isOver ? '0 2px 10px rgba(220,38,38,0.5)' : percentage < 50 ? '0 2px 10px rgba(16,185,129,0.5)' : percentage < 80 ? '0 2px 10px rgba(139,92,246,0.5)' : '0 2px 10px rgba(239,68,68,0.5)',
-                              overflow:'hidden'
-                            }}>
-                              <div style={{position:'absolute',top:0,left:'-100%',width:'200%',height:'100%',background:'linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)',animation:'shimmer 2s infinite'}} />
-                            </div>
-                          </div>
-                          
-                          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',position:'relative',zIndex:1}}>
-                            <div style={{fontSize:13,color:isOver ? '#dc2626' : '#065f46',fontWeight:600,display:'flex',alignItems:'center',gap:6}}>
-                              {isOver ? (
-                                <>
-                                  <span style={{fontSize:16}}>⚠️</span>
-                                  <span>Over by <strong>{consumed - target} kcal</strong></span>
-                                </>
-                              ) : (
-                                <>
-                                  <span style={{fontSize:16}}>✅</span>
-                                  <span><strong>{remaining} kcal</strong> remaining</span>
-                                </>
-                              )}
-                            </div>
-                            <div style={{fontSize:11,color:'#4c1d95',fontWeight:600,background:'rgba(255,255,255,0.6)',padding:'4px 10px',borderRadius:8}}>
-                              {isOver ? 'EXCEED' : percentage > 90 ? 'ALMOST THERE' : percentage > 50 ? 'ON TRACK' : 'PLENTY LEFT'}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })()}                    
-                  </div>
-                  
-                  {/* Overall Progress Summary - PREMIUM UPGRADED */}
-                  {(() => {
-                    const totalTarget = calorieData.daily_calories;
-                    const totalConsumed = consumedCalories.breakfast + consumedCalories.lunch + consumedCalories.evening_snack + consumedCalories.dinner;
-                    const totalRemaining = Math.max(0, totalTarget - totalConsumed);
-                    const totalPercentage = Math.min(100, (totalConsumed / totalTarget) * 100);
-                    const isOver = totalConsumed > totalTarget;
-                    
-                    return (
+              {/* CARD 2: Hydration Tracker */}
+              <div className="card" style={{background:'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)',border:'2px solid #3b82f6',borderRadius:16,padding:20}}>
+                <h3 style={{margin:0,fontSize:18,fontWeight:700,color:'#1e40af',marginBottom:4}}>Hydration</h3>
+                <h3 style={{margin:0,fontSize:18,fontWeight:700,color:'#1e40af',marginBottom:16}}>Tracker</h3>
+
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:20}}>
+                  {/* Water Bottle */}
+                  <div style={{flex:'0 0 auto'}}>
+                    <div style={{position:'relative',width:80,height:160}}>
                       <div style={{
-                        marginTop:20,
-                        padding:20,
-                        background:isOver ? 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                        borderRadius:16,
-                        border:isOver ? '2px solid #dc2626' : '2px solid #667eea',
-                        boxShadow:isOver ? '0 10px 30px rgba(220,38,38,0.3)' : '0 10px 30px rgba(102,126,234,0.4)',
-                        position:'relative',
+                        position:'absolute',
+                        top:25,
+                        left:25,
+                        width:30,
+                        height:110,
+                        border:'4px solid #1e40af',
+                        borderRadius:'6px 6px 10px 10px',
+                        background:'#fff',
                         overflow:'hidden'
                       }}>
-                        {/* Animated background glow */}
-                        <div style={{position:'absolute',top:0,left:'-100%',width:'200%',height:'100%',background:'linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)',animation:'shimmer 4s infinite',pointerEvents:'none'}} />
-                        
-                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,position:'relative',zIndex:1}}>
-                          <div style={{display:'flex',alignItems:'center',gap:10}}>
-                            <div style={{width:48,height:48,borderRadius:14,background:isOver ? 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)' : 'linear-gradient(135deg, #ffffff30 0%, #ffffff10 100%)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,boxShadow:'0 4px 15px rgba(0,0,0,0.2)'}}>
-                              {isOver ? '⚠️' : '📈'}
-                            </div>
-                            <div>
-                              <span style={{fontSize:16,fontWeight:700,color:isOver ? '#7f1d1d' : '#ffffff',letterSpacing:'0.5px'}}>
-                                TOTAL DAILY PROGRESS
-                              </span>
-                              <div style={{fontSize:12,color:isOver ? '#991b1b' : 'rgba(255,255,255,0.9)',marginTop:2,fontWeight:500}}>
-                                {isOver ? 'Exceeded daily target' : 'Stay on track!'}
-                              </div>
-                            </div>
-                          </div>
-                          <div style={{textAlign:'right'}}>
-                            <div style={{fontSize:24,fontWeight:900,color:isOver ? '#7f1d1d' : '#ffffff',letterSpacing:'-1px'}}>
-                              {totalConsumed}
-                              <span style={{fontSize:16,fontWeight:600,marginLeft:4}}>/ {totalTarget}</span>
-                            </div>
-                            <div style={{fontSize:13,color:isOver ? '#991b1b' : 'rgba(255,255,255,0.95)',fontWeight:700,marginTop:2}}>
-                              {Math.round(totalPercentage)}% of daily goal
-                            </div>
-                          </div>
-                        </div>
-                        
-                        {/* Premium mega progress bar */}
-                        <div style={{position:'relative',height:28,background:isOver ? 'rgba(127,29,29,0.3)' : 'rgba(255,255,255,0.2)',borderRadius:14,overflow:'hidden',boxShadow:'inset 0 3px 6px rgba(0,0,0,0.2)',marginBottom:12,zIndex:1}}>
-                          <div style={{
-                            position:'absolute',
-                            left:0,
-                            top:0,
-                            bottom:0,
-                            width:`${totalPercentage}%`,
-                            background: isOver ? 'linear-gradient(90deg, #dc2626 0%, #ef4444 30%, #f87171 60%, #ef4444 100%)' :
-                                       totalPercentage < 50 ? 'linear-gradient(90deg, #10b981 0%, #34d399 50%, #6ee7b7 100%)' : 
-                                       totalPercentage < 80 ? 'linear-gradient(90deg, #f59e0b 0%, #fbbf24 50%, #fcd34d 100%)' : 
-                                       'linear-gradient(90deg, #ef4444 0%, #f87171 50%, #fca5a5 100%)',
-                            borderRadius:14,
-                            transition:'width 0.8s cubic-bezier(0.4, 0, 0.2, 1), background 0.4s ease',
-                            boxShadow:isOver ? '0 0 20px rgba(220,38,38,0.6), inset 0 1px 2px rgba(255,255,255,0.3)' : '0 0 20px rgba(255,255,255,0.4), inset 0 1px 2px rgba(255,255,255,0.3)',
-                            overflow:'hidden'
-                          }}>
-                            {/* Multiple animated shine layers */}
-                            <div style={{position:'absolute',top:0,left:'-100%',width:'200%',height:'100%',background:'linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent)',animation:'shimmer 1.5s infinite'}} />
-                            <div style={{position:'absolute',top:0,left:0,right:0,height:'50%',background:'linear-gradient(180deg, rgba(255,255,255,0.3), transparent)',borderRadius:'12px 12px 0 0'}} />
-                          </div>
-                        </div>
-                        
-                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',position:'relative',zIndex:1}}>
-                          <div style={{fontSize:14,color:isOver ? '#7f1d1d' : '#ffffff',fontWeight:700,display:'flex',alignItems:'center',gap:8}}>
-                            {isOver ? (
-                              <>
-                                <span style={{fontSize:20}}>🔥</span>
-                                <span><strong>{totalConsumed - totalTarget} kcal</strong> over daily target</span>
-                              </>
-                            ) : (
-                              <>
-                                <span style={{fontSize:20}}>💪</span>
-                                <span><strong>{totalRemaining} kcal</strong> remaining for today</span>
-                              </>
-                            )}
-                          </div>
-                          <div style={{
-                            fontSize:12,
-                            fontWeight:700,
-                            background:isOver ? 'rgba(127,29,29,0.4)' : 'rgba(255,255,255,0.25)',
-                            color:isOver ? '#7f1d1d' : '#ffffff',
-                            padding:'6px 14px',
-                            borderRadius:10,
-                            backdropFilter:'blur(10px)',
-                            boxShadow:'0 2px 10px rgba(0,0,0,0.15)'
-                          }}>
-                            {isOver ? '⚠️ EXCEEDED' : totalPercentage > 90 ? '🎯 ALMOST THERE' : totalPercentage > 50 ? '✨ ON TRACK' : '🚀 GREAT START'}
-                          </div>
-                        </div>
+                        <div style={{
+                          position:'absolute',
+                          bottom:0,
+                          left:0,
+                          right:0,
+                          height:`${(waterGlasses / waterGoal) * 100}%`,
+                          background:'linear-gradient(180deg, #60a5fa 0%, #3b82f6 100%)',
+                          transition:'height 0.5s ease'
+                        }} />
                       </div>
-                    );
-                  })()}
-                </div>
-
-                {/* Macro Targets */}
-                <div style={{background:'#fff',padding:16,borderRadius:10,marginBottom:16}}>
-                  <h4 style={{margin:0,marginBottom:12,color:'#374151'}}>🎯 Daily Macro Targets</h4>
-                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(140px, 1fr))',gap:12}}>
-                    <div style={{padding:12,background:'#fce7f3',borderRadius:8,textAlign:'center'}}>
-                      <div style={{fontSize:11,color:'#6b7280',marginBottom:4}}>PROTEIN ({calorieData.macros.protein.percentage}%)</div>
-                      <div style={{fontSize:24,fontWeight:700,color:'#ec4899'}}>{calorieData.macros.protein.grams}g</div>
-                      <div style={{fontSize:11,color:'#6b7280',marginTop:2}}>{calorieData.macros.protein.calories} kcal</div>
-                    </div>
-                    <div style={{padding:12,background:'#cffafe',borderRadius:8,textAlign:'center'}}>
-                      <div style={{fontSize:11,color:'#6b7280',marginBottom:4}}>CARBS ({calorieData.macros.carbs.percentage}%)</div>
-                      <div style={{fontSize:24,fontWeight:700,color:'#06b6d4'}}>{calorieData.macros.carbs.grams}g</div>
-                      <div style={{fontSize:11,color:'#6b7280',marginTop:2}}>{calorieData.macros.carbs.calories} kcal</div>
-                    </div>
-                    <div style={{padding:12,background:'#d1fae5',borderRadius:8,textAlign:'center'}}>
-                      <div style={{fontSize:11,color:'#6b7280',marginBottom:4}}>FAT ({calorieData.macros.fat.percentage}%)</div>
-                      <div style={{fontSize:24,fontWeight:700,color:'#10b981'}}>{calorieData.macros.fat.grams}g</div>
-                      <div style={{fontSize:11,color:'#6b7280',marginTop:2}}>{calorieData.macros.fat.calories} kcal</div>
+                      <div style={{
+                        position:'absolute',
+                        top:16,
+                        left:31,
+                        width:18,
+                        height:14,
+                        background:'#1e40af',
+                        borderRadius:'3px 3px 0 0'
+                      }} />
                     </div>
                   </div>
-                </div>
 
-                {/* Personalized Insights */}
-                <div style={{background:'#fef3c7',padding:16,borderRadius:10,borderLeft:'4px solid #f59e0b'}}>
-                  <h4 style={{margin:0,marginBottom:12,color:'#92400e',display:'flex',alignItems:'center',gap:6}}>
-                    <span>💡</span>
-                    <span>Personalized Insights</span>
-                  </h4>
-                  <div style={{display:'grid',gap:8}}>
-                    {calorieData.insights.tips.map((tip: string, idx: number) => (
-                      <div key={idx} style={{fontSize:13,color:'#92400e',lineHeight:1.6,paddingLeft:16,position:'relative'}}>
-                        <span style={{position:'absolute',left:0}}>•</span>
-                        {tip}
-                      </div>
-                    ))}
-                    <div style={{marginTop:8,padding:10,background:'#fff',borderRadius:6,display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(140px, 1fr))',gap:8}}>
-                      <div style={{fontSize:12}}>
-                        <span style={{fontWeight:600,color:'#92400e'}}>BMI:</span>
-                        <span style={{marginLeft:6,color:'#92400e'}}>{calorieData.insights.bmi}</span>
-                      </div>
-                      <div style={{fontSize:12}}>
-                        <span style={{fontWeight:600,color:'#92400e'}}>Water Goal:</span>
-                        <span style={{marginLeft:6,color:'#92400e'}}>{calorieData.insights.water_intake_liters}L/day</span>
-                      </div>
-                      <div style={{fontSize:12}}>
-                        <span style={{fontWeight:600,color:'#92400e'}}>Est. Weekly:</span>
-                        <span style={{marginLeft:6,color:calorieData.insights.estimated_weekly_change_kg < 0 ? '#059669' : '#2563eb'}}>
-                          {calorieData.insights.estimated_weekly_change_kg > 0 ? '+' : ''}{calorieData.insights.estimated_weekly_change_kg}kg
-                        </span>
-                      </div>
+                  {/* Counter & Controls */}
+                  <div style={{flex:1,textAlign:'center'}}>
+                    <div style={{fontSize:56,fontWeight:700,color:'#1e40af',lineHeight:1,marginBottom:4}}>
+                      {waterGlasses}
+                      <span style={{fontSize:30,color:'#60a5fa'}}>/{waterGoal}</span>
+                    </div>
+                    <div style={{fontSize:14,color:'#1e3a8a',fontWeight:600,marginBottom:20}}>glasses today</div>
+
+                    <div style={{display:'flex',gap:14,justifyContent:'center',marginBottom:20}}>
+                      <button
+                        onClick={() => setWaterGlasses(Math.max(0, waterGlasses - 1))}
+                        disabled={waterGlasses === 0}
+                        style={{
+                          width:52,
+                          height:52,
+                          borderRadius:'50%',
+                          border:'none',
+                          background: waterGlasses === 0 ? '#e5e7eb' : '#fff',
+                          color: waterGlasses === 0 ? '#9ca3af' : '#6b7280',
+                          fontSize:32,
+                          fontWeight:700,
+                          cursor: waterGlasses === 0 ? 'not-allowed' : 'pointer',
+                          boxShadow:'0 2px 8px rgba(0,0,0,0.1)'
+                        }}
+                      >
+                        −
+                      </button>
+                      <button
+                        onClick={() => setWaterGlasses(Math.min(waterGoal + 5, waterGlasses + 1))}
+                        style={{
+                          width:52,
+                          height:52,
+                          borderRadius:'50%',
+                          border:'none',
+                          background:'#10b981',
+                          color:'#fff',
+                          fontSize:32,
+                          fontWeight:700,
+                          cursor:'pointer',
+                          boxShadow:'0 2px 12px rgba(16,185,129,0.3)'
+                        }}
+                      >
+                        +
+                      </button>
+                    </div>
+
+                    <div style={{height:8,background:'rgba(255,255,255,0.3)',borderRadius:4,overflow:'hidden',marginBottom:8}}>
+                      <div style={{
+                        height:'100%',
+                        width:`${Math.min((waterGlasses / waterGoal) * 100, 100)}%`,
+                        background:'#3b82f6',
+                        borderRadius:4,
+                        transition:'width 0.5s ease'
+                      }} />
+                    </div>
+                    <div style={{fontSize:12,color:'#1e3a8a',fontWeight:600}}>
+                      {Math.round((waterGlasses / waterGoal) * 100)}% of daily goal
                     </div>
                   </div>
-                </div>
-
-                {/* Calculation Info */}
-                <div style={{marginTop:12,fontSize:11,color:'#6b7280',textAlign:'center'}}>
-                  Calculated {new Date(calorieData.metadata.calculated_at).toLocaleString()} • 
-                  Activity: {calorieData.metadata.activity_level.replace('_', ' ')} • 
-                  Goal: {calorieData.metadata.health_goal.replace('_', ' ')}
                 </div>
               </div>
-            )}
 
-            {/* Calorie Calculation Error or Missing Data */}
-            {calorieError && (
-              <div className="card" style={{marginTop:16,background:'#fef2f2',border:'1px solid #fecaca'}}>
-                <div style={{color:'#991b1b',fontSize:14,fontWeight:500,marginBottom:8}}>
-                  ⚠️ {calorieError}
-                </div>
-                {calorieError.includes('Profile incomplete') || calorieError.includes('Missing') ? (
-                  <div style={{fontSize:13,color:'#7f1d1d',marginBottom:12,lineHeight:1.5}}>
-                    Your profile has the data locally, but it needs to be saved to our server. 
-                    Please click "Edit Profile" and then "Save Profile" to sync your data.
+              {/* CARD 3: Recommended Recipes */}
+              <div className="card" style={{background:'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',border:'2px solid #f59e0b',borderRadius:16,padding:20}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+                  <h3 style={{margin:0,fontSize:18,fontWeight:700,color:'#92400e'}}>Recommended Recipes</h3>
+                  <div style={{display:'flex',gap:8}}>
+                    <button style={{width:32,height:32,borderRadius:'50%',border:'1px solid #f59e0b',background:'#fff',color:'#f59e0b',fontSize:18,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>‹</button>
+                    <button style={{width:32,height:32,borderRadius:'50%',border:'1px solid #f59e0b',background:'#fff',color:'#f59e0b',fontSize:18,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>›</button>
                   </div>
-                ) : null}
-                <button
-                  onClick={() => setView('settings')}
-                  className="btn"
-                  style={{marginTop:4,background:'#dc2626'}}
-                >
-                  Go to Profile Settings
-                </button>
-              </div>
-            )}
+                </div>
 
-            {!calorieData && !calorieError && user && (!user.weight || !user.height || !user.age || !user.gender) && (
-              <div className="card" style={{marginTop:16,background:'#eff6ff',border:'1px solid #bfdbfe'}}>
-                <div style={{display:'flex',alignItems:'start',gap:12}}>
-                  <div style={{fontSize:32}}>🤖</div>
-                  <div style={{flex:1}}>
-                    <h4 style={{margin:0,marginBottom:6,color:'#1e40af'}}>Get Your AI Calorie Plan</h4>
-                    <div style={{fontSize:14,color:'#1e40af',marginBottom:12,lineHeight:1.6}}>
-                      Complete your profile to get scientifically calculated daily calorie targets, 
-                      meal-wise distribution, and personalized nutrition insights!
-                    </div>
-                    <button
-                      onClick={() => setView('settings')}
-                      className="btn-primary"
-                      style={{background:'#2563eb'}}
+                <div style={{display:'flex',overflowX:'auto',gap:12,paddingBottom:4,scrollbarWidth:'none'}}>
+                  {[
+                    { name: 'Healthion Salads', recipes: 142, icon: '🥗' },
+                    { name: 'Healthy Smoothies', recipes: 188, icon: '🥤' },
+                    { name: 'Smoothies, x', recipes: 138, icon: '🥗' }
+                  ].map((recipe, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        minWidth:140,
+                        flexShrink:0,
+                        background:'#fff',
+                        borderRadius:12,
+                        padding:12,
+                        textAlign:'center',
+                        cursor:'pointer',
+                        border:'2px solid #fbbf24',
+                        transition:'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'translateY(-4px)';
+                        e.currentTarget.style.boxShadow = '0 6px 16px rgba(245,158,11,0.3)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'translateY(0)';
+                        e.currentTarget.style.boxShadow = 'none';
+                      }}
                     >
-                      Complete Profile Now
-                    </button>
-                  </div>
+                      <div style={{
+                        width:'100%',
+                        height:100,
+                        borderRadius:8,
+                        background:'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+                        display:'flex',
+                        alignItems:'center',
+                        justifyContent:'center',
+                        fontSize:52,
+                        marginBottom:8
+                      }}>
+                        {recipe.icon}
+                      </div>
+                      <div style={{fontSize:13,fontWeight:600,color:'#92400e',marginBottom:4}}>{recipe.name}</div>
+                      <div style={{fontSize:11,color:'#78350f'}}>{recipe.recipes} recipes</div>
+                    </div>
+                  ))}
                 </div>
               </div>
-            )}
-
-            {/* Today's Meal Breakdown by Type */}
-            {meals.length > 0 && (() => {
-              const mealsByType = { breakfast: 0, lunch: 0, snack: 0, dinner: 0 };
-              const caloriesByType = { breakfast: 0, lunch: 0, snack: 0, dinner: 0 };
-              meals.forEach(m => {
-                const cal = m.calories || 0;
-                if (m.meal_type === 'Breakfast') { mealsByType.breakfast++; caloriesByType.breakfast += cal; }
-                else if (m.meal_type === 'Lunch') { mealsByType.lunch++; caloriesByType.lunch += cal; }
-                else if (m.meal_type === 'Evening Snack') { mealsByType.snack++; caloriesByType.snack += cal; }
-                else if (m.meal_type === 'Dinner') { mealsByType.dinner++; caloriesByType.dinner += cal; }
-              });
-              
-              return (
-                <div className="card" style={{marginTop:12}}>
-                  <h3 style={{marginTop:0,marginBottom:16}}>Today's Meals</h3>
-                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))',gap:12}}>
-                    <div style={{padding:16,background:'#fef3c7',borderRadius:8,borderLeft:'4px solid #f59e0b'}}>
-                      <div style={{fontSize:24,marginBottom:6}}>🌅</div>
-                      <div style={{fontWeight:600,color:'#92400e'}}>Breakfast</div>
-                      <div style={{fontSize:20,fontWeight:700,color:'#92400e',marginTop:4}}>{caloriesByType.breakfast} kcal</div>
-                      <div style={{fontSize:12,color:'#92400e',opacity:0.8,marginTop:2}}>{mealsByType.breakfast} meal{mealsByType.breakfast !== 1 ? 's' : ''}</div>
-                    </div>
-                    
-                    <div style={{padding:16,background:'#dbeafe',borderRadius:8,borderLeft:'4px solid #3b82f6'}}>
-                      <div style={{fontSize:24,marginBottom:6}}>☀️</div>
-                      <div style={{fontWeight:600,color:'#1e40af'}}>Lunch</div>
-                      <div style={{fontSize:20,fontWeight:700,color:'#1e40af',marginTop:4}}>{caloriesByType.lunch} kcal</div>
-                      <div style={{fontSize:12,color:'#1e40af',opacity:0.8,marginTop:2}}>{mealsByType.lunch} meal{mealsByType.lunch !== 1 ? 's' : ''}</div>
-                    </div>
-                    
-                    <div style={{padding:16,background:'#d1fae5',borderRadius:8,borderLeft:'4px solid #10b981'}}>
-                      <div style={{fontSize:24,marginBottom:6}}>🍵</div>
-                      <div style={{fontWeight:600,color:'#065f46'}}>Snacks</div>
-                      <div style={{fontSize:20,fontWeight:700,color:'#065f46',marginTop:4}}>{caloriesByType.snack} kcal</div>
-                      <div style={{fontSize:12,color:'#065f46',opacity:0.8,marginTop:2}}>{mealsByType.snack} meal{mealsByType.snack !== 1 ? 's' : ''}</div>
-                    </div>
-                    
-                    <div style={{padding:16,background:'#e9d5ff',borderRadius:8,borderLeft:'4px solid #8b5cf6'}}>
-                      <div style={{fontSize:24,marginBottom:6}}>🌙</div>
-                      <div style={{fontWeight:600,color:'#5b21b6'}}>Dinner</div>
-                      <div style={{fontSize:20,fontWeight:700,color:'#5b21b6',marginTop:4}}>{caloriesByType.dinner} kcal</div>
-                      <div style={{fontSize:12,color:'#5b21b6',opacity:0.8,marginTop:2}}>{mealsByType.dinner} meal{mealsByType.dinner !== 1 ? 's' : ''}</div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
+            </div>
 
             {/* Macro Progress */}
             {meals.length > 0 && (
@@ -1829,82 +1692,14 @@ const App: React.FC = () => {
         )}
 
         {view === 'history' && (
-          <div>
-            <h3>Meal History</h3>
-            <div className="card" style={{marginTop:10}}>
-              {meals.length === 0 ? <div style={{color:'#6b7280'}}>No meals logged.</div> : (
-                <table style={{width:'100%',borderCollapse:'collapse'}}>
-                  <thead>
-                    <tr style={{textAlign:'left',borderBottom:'2px solid #e5e7eb'}}>
-                      <th style={{padding:'10px 8px',fontWeight:600}}>Time</th>
-                      <th style={{padding:'10px 8px',fontWeight:600}}>Meal Type</th>
-                      <th style={{padding:'10px 8px',fontWeight:600}}>Name</th>
-                      <th style={{padding:'10px 8px',fontWeight:600}}>Serving</th>
-                      <th style={{padding:'10px 8px',fontWeight:600}}>Calories</th>
-                      <th style={{padding:'10px 8px',fontWeight:600}}>Protein</th>
-                      <th style={{padding:'10px 8px',fontWeight:600}}>Carbs</th>
-                      <th style={{padding:'10px 8px',fontWeight:600}}>Fat</th>
-                      <th style={{padding:'10px 8px',fontWeight:600}}>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {meals.map(m => {
-                      const getMealTypeDisplay = (type?: string) => {
-                        switch(type) {
-                          case 'Breakfast': return '🌅 Breakfast';
-                          case 'Lunch': return '☀️ Lunch';
-                          case 'Evening Snack': return '🍵 Snack';
-                          case 'Dinner': return '🌙 Dinner';
-                          default: return '—';
-                        }
-                      };
-                      return (
-                      <tr key={m.id} style={{borderBottom:'1px solid #f1f5f9'}}>
-                        <td style={{padding:'10px 8px',fontSize:13,color:'#6b7280'}}>
-                          {new Date(m.timestamp).toLocaleString()}
-                        </td>
-                        <td style={{padding:'10px 8px',fontSize:13}}>
-                          {getMealTypeDisplay(m.meal_type)}
-                        </td>
-                        <td style={{padding:'10px 8px',fontWeight:500}}>{m.name}</td>
-                        <td style={{padding:'10px 8px',fontSize:13,color:'#6b7280'}}>
-                          {m.serving_size} {m.unit}
-                        </td>
-                        <td style={{padding:'10px 8px',fontWeight:600,color:'#2563eb'}}>
-                          {m.calories ?? '—'}
-                        </td>
-                        <td style={{padding:'10px 8px'}}>{m.protein ?? '—'}g</td>
-                        <td style={{padding:'10px 8px'}}>{m.carbs ?? '—'}g</td>
-                        <td style={{padding:'10px 8px'}}>{m.fat ?? '—'}g</td>
-                        <td style={{padding:'10px 8px'}}>
-                          <button
-                            onClick={() => deleteMeal(m.id)}
-                            style={{
-                              background:'#fee2e2',
-                              color:'#991b1b',
-                              border:'none',
-                              borderRadius:6,
-                              padding:'6px 12px',
-                              fontSize:12,
-                              cursor:'pointer',
-                              fontWeight:600
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = '#fecaca'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = '#fee2e2'}
-                          >
-                            Delete
-                          </button>
-                        </td>
-                      </tr>
-                    )})}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
+          <MealHistory />
         )}
 
         {view === 'analytics' && (
+          <NutritionAnalytics />
+        )}
+
+        {view === 'analytics-old' && (
           <div>
             <h3>Nutrition Analytics</h3>
             
@@ -2404,6 +2199,944 @@ const App: React.FC = () => {
           );
         })()}
 
+        {view === 'ai-calorie-plan' && (
+          <div>
+            {calorieData ? (
+              <>
+                {/* Header */}
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+                  <div>
+                    <h2 style={{margin:0,color:'#667eea',fontSize:28,display:'flex',alignItems:'center',gap:10}}>
+                      <span style={{fontSize:32}}>🤖</span>
+                      AI Daily Calorie Plan
+                    </h2>
+                    <div style={{fontSize:15,color:'#6b7280',marginTop:6}}>
+                      Scientifically calculated using Mifflin-St Jeor formula
+                    </div>
+                  </div>
+                  <button
+                    onClick={calculateCalories}
+                    className="btn"
+                    style={{background:'#667eea',color:'#fff',padding:'10px 18px',fontSize:14,fontWeight:600}}
+                    disabled={calorieLoading}
+                  >
+                    {calorieLoading ? 'Calculating...' : '🔄 Refresh Plan'}
+                  </button>
+                </div>
+
+                {/* Calculation Metadata */}
+                <div style={{fontSize:13,color:'#6b7280',marginBottom:24,padding:12,background:'#f8fafc',borderRadius:8,textAlign:'center'}}>
+                  📅 Calculated {new Date(calorieData.metadata.calculated_at).toLocaleString()} • 
+                  🏃 Activity: {calorieData.metadata.activity_level.replace('_', ' ')} • 
+                  🎯 Goal: {calorieData.metadata.health_goal.replace('_', ' ')}
+                </div>
+
+                {/* Main Stats Grid */}
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(240px, 1fr))',gap:16,marginBottom:20}}>
+                  <div className="card" style={{background:'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',color:'#fff',border:'none'}}>
+                    <div style={{fontSize:14,opacity:0.9,marginBottom:8}}>🎯 Daily Target</div>
+                    <div style={{fontSize:36,fontWeight:700}}>{calorieData.daily_calories}</div>
+                    <div style={{fontSize:14,opacity:0.85,marginTop:4}}>kcal per day</div>
+                  </div>
+                  
+                  <div className="card" style={{background:'linear-gradient(135deg, #10b981 0%, #059669 100%)',color:'#fff',border:'none'}}>
+                    <div style={{fontSize:14,opacity:0.9,marginBottom:8}}>💤 BMR (Basal Metabolic Rate)</div>
+                    <div style={{fontSize:36,fontWeight:700}}>{calorieData.bmr}</div>
+                    <div style={{fontSize:14,opacity:0.85,marginTop:4}}>kcal at rest</div>
+                  </div>
+                  
+                  <div className="card" style={{background:'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',color:'#fff',border:'none'}}>
+                    <div style={{fontSize:14,opacity:0.9,marginBottom:8}}>⚡ TDEE (Total Daily Energy)</div>
+                    <div style={{fontSize:36,fontWeight:700}}>{calorieData.tdee}</div>
+                    <div style={{fontSize:14,opacity:0.85,marginTop:4}}>kcal to maintain</div>
+                  </div>
+                  
+                  <div className="card" style={{background:calorieData.adjustment < 0 ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',color:'#fff',border:'none'}}>
+                    <div style={{fontSize:14,opacity:0.9,marginBottom:8}}>📊 Adjustment for Goal</div>
+                    <div style={{fontSize:36,fontWeight:700}}>
+                      {calorieData.adjustment > 0 ? '+' : ''}{calorieData.adjustment}
+                    </div>
+                    <div style={{fontSize:14,opacity:0.85,marginTop:4}}>kcal {calorieData.adjustment < 0 ? 'deficit' : 'surplus'}</div>
+                  </div>
+                </div>
+
+                {/* Macro Targets */}
+                <div className="card" style={{marginBottom:20}}>
+                  <h3 style={{margin:0,marginBottom:16,color:'#374151'}}>🎯 Daily Macro Targets</h3>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))',gap:16}}>
+                    <div style={{padding:20,background:'linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)',borderRadius:12,textAlign:'center',border:'2px solid #ec4899'}}>
+                      <div style={{fontSize:13,color:'#9f1239',marginBottom:8,fontWeight:600}}>PROTEIN ({calorieData.macros.protein.percentage}%)</div>
+                      <div style={{fontSize:32,fontWeight:700,color:'#ec4899',marginBottom:4}}>{calorieData.macros.protein.grams}g</div>
+                      <div style={{fontSize:13,color:'#9f1239',opacity:0.8}}>{calorieData.macros.protein.calories} kcal</div>
+                      <div style={{marginTop:8,padding:8,background:'#fff',borderRadius:6,fontSize:12,color:'#6b7280'}}>
+                        4 kcal per gram
+                      </div>
+                    </div>
+                    
+                    <div style={{padding:20,background:'linear-gradient(135deg, #cffafe 0%, #a5f3fc 100%)',borderRadius:12,textAlign:'center',border:'2px solid #06b6d4'}}>
+                      <div style={{fontSize:13,color:'#164e63',marginBottom:8,fontWeight:600}}>CARBS ({calorieData.macros.carbs.percentage}%)</div>
+                      <div style={{fontSize:32,fontWeight:700,color:'#06b6d4',marginBottom:4}}>{calorieData.macros.carbs.grams}g</div>
+                      <div style={{fontSize:13,color:'#164e63',opacity:0.8}}>{calorieData.macros.carbs.calories} kcal</div>
+                      <div style={{marginTop:8,padding:8,background:'#fff',borderRadius:6,fontSize:12,color:'#6b7280'}}>
+                        4 kcal per gram
+                      </div>
+                    </div>
+                    
+                    <div style={{padding:20,background:'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)',borderRadius:12,textAlign:'center',border:'2px solid #10b981'}}>
+                      <div style={{fontSize:13,color:'#065f46',marginBottom:8,fontWeight:600}}>FAT ({calorieData.macros.fat.percentage}%)</div>
+                      <div style={{fontSize:32,fontWeight:700,color:'#10b981',marginBottom:4}}>{calorieData.macros.fat.grams}g</div>
+                      <div style={{fontSize:13,color:'#065f46',opacity:0.8}}>{calorieData.macros.fat.calories} kcal</div>
+                      <div style={{marginTop:8,padding:8,background:'#fff',borderRadius:6,fontSize:12,color:'#6b7280'}}>
+                        9 kcal per gram
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Meal-wise Calorie Tracker */}
+                <div style={{marginBottom:24}}>
+                  {/* Header with Date Filter */}
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
+                    <div style={{display:'flex',alignItems:'center',gap:12}}>
+                      <div style={{width:48,height:48,borderRadius:12,background:'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24}}>
+                        🍽️
+                      </div>
+                      <h3 style={{margin:0,fontSize:22,fontWeight:700,color:'#1f2937'}}>Meal-wise Calorie Tracker</h3>
+                    </div>
+                    
+                    {/* Date Filter Dropdown */}
+                    <div style={{position:'relative'}}>
+                      <button
+                        onClick={() => setShowTrackerDropdown(!showTrackerDropdown)}
+                        style={{
+                          display:'flex',
+                          alignItems:'center',
+                          gap:8,
+                          padding:'10px 16px',
+                          background:'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                          color:'#fff',
+                          border:'none',
+                          borderRadius:20,
+                          fontSize:14,
+                          fontWeight:600,
+                          cursor:'pointer',
+                          boxShadow:'0 4px 12px rgba(102,126,234,0.3)',
+                          transition:'all 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-1px)'}
+                        onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                      >
+                        <span style={{fontSize:16}}>📅</span>
+                        <span>{getTrackerDateLabel()}</span>
+                        <span style={{fontSize:12,opacity:0.8}}>▼</span>
+                      </button>
+
+                      {/* Dropdown Menu */}
+                      {showTrackerDropdown && (
+                        <>
+                          {/* Backdrop */}
+                          <div
+                            onClick={() => setShowTrackerDropdown(false)}
+                            style={{
+                              position:'fixed',
+                              top:0,
+                              left:0,
+                              right:0,
+                              bottom:0,
+                              zIndex:999
+                            }}
+                          />
+                          
+                          {/* Menu */}
+                          <div style={{
+                            position:'absolute',
+                            top:'100%',
+                            right:0,
+                            marginTop:8,
+                            background:'#fff',
+                            borderRadius:12,
+                            boxShadow:'0 8px 24px rgba(0,0,0,0.15)',
+                            border:'1px solid #e5e7eb',
+                            minWidth:200,
+                            zIndex:1000,
+                            overflow:'hidden'
+                          }}>
+                            <button
+                              onClick={() => {
+                                setTrackerDateFilter('today');
+                                setShowTrackerDropdown(false);
+                              }}
+                              style={{
+                                width:'100%',
+                                padding:'12px 16px',
+                                background: trackerDateFilter === 'today' ? '#f3f4f6' : 'transparent',
+                                border:'none',
+                                textAlign:'left',
+                                fontSize:14,
+                                fontWeight: trackerDateFilter === 'today' ? 600 : 400,
+                                color:'#374151',
+                                cursor:'pointer',
+                                transition:'background 0.15s ease',
+                                display:'flex',
+                                alignItems:'center',
+                                gap:8
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
+                              onMouseLeave={(e) => e.currentTarget.style.background = trackerDateFilter === 'today' ? '#f3f4f6' : 'transparent'}
+                            >
+                              {trackerDateFilter === 'today' && <span style={{color:'#667eea'}}>✓</span>}
+                              <span>Today</span>
+                            </button>
+                            
+                            <button
+                              onClick={() => {
+                                setTrackerDateFilter('yesterday');
+                                setShowTrackerDropdown(false);
+                              }}
+                              style={{
+                                width:'100%',
+                                padding:'12px 16px',
+                                background: trackerDateFilter === 'yesterday' ? '#f3f4f6' : 'transparent',
+                                border:'none',
+                                textAlign:'left',
+                                fontSize:14,
+                                fontWeight: trackerDateFilter === 'yesterday' ? 600 : 400,
+                                color:'#374151',
+                                cursor:'pointer',
+                                transition:'background 0.15s ease',
+                                display:'flex',
+                                alignItems:'center',
+                                gap:8
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
+                              onMouseLeave={(e) => e.currentTarget.style.background = trackerDateFilter === 'yesterday' ? '#f3f4f6' : 'transparent'}
+                            >
+                              {trackerDateFilter === 'yesterday' && <span style={{color:'#667eea'}}>✓</span>}
+                              <span>Yesterday</span>
+                            </button>
+                            
+                            <button
+                              onClick={() => {
+                                setTrackerDateFilter('twoDaysAgo');
+                                setShowTrackerDropdown(false);
+                              }}
+                              style={{
+                                width:'100%',
+                                padding:'12px 16px',
+                                background: trackerDateFilter === 'twoDaysAgo' ? '#f3f4f6' : 'transparent',
+                                border:'none',
+                                textAlign:'left',
+                                fontSize:14,
+                                fontWeight: trackerDateFilter === 'twoDaysAgo' ? 600 : 400,
+                                color:'#374151',
+                                cursor:'pointer',
+                                transition:'background 0.15s ease',
+                                display:'flex',
+                                alignItems:'center',
+                                gap:8
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
+                              onMouseLeave={(e) => e.currentTarget.style.background = trackerDateFilter === 'twoDaysAgo' ? '#f3f4f6' : 'transparent'}
+                            >
+                              {trackerDateFilter === 'twoDaysAgo' && <span style={{color:'#667eea'}}>✓</span>}
+                              <span>2 days ago</span>
+                            </button>
+                            
+                            <div style={{height:1,background:'#e5e7eb',margin:'4px 0'}} />
+                            
+                            <div style={{padding:'12px 16px'}}>
+                              <label style={{fontSize:12,color:'#6b7280',fontWeight:600,display:'block',marginBottom:6}}>Choose a date</label>
+                              <input
+                                type="date"
+                                value={trackerCustomDate}
+                                max={new Date().toISOString().split('T')[0]}
+                                onChange={(e) => {
+                                  setTrackerCustomDate(e.target.value);
+                                  setTrackerDateFilter('custom');
+                                  setShowTrackerDropdown(false);
+                                }}
+                                style={{
+                                  width:'100%',
+                                  padding:'8px 10px',
+                                  border:'1px solid #d1d5db',
+                                  borderRadius:6,
+                                  fontSize:13,
+                                  fontFamily:'inherit',
+                                  cursor:'pointer'
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Viewing Date Strip */}
+                  <div style={{
+                    textAlign:'center',
+                    padding:'10px 16px',
+                    background:'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+                    borderRadius:20,
+                    marginBottom:16,
+                    fontSize:13,
+                    fontWeight:600,
+                    color:'#0c4a6e',
+                    border:'1px solid #bae6fd'
+                  }}>
+                    <span style={{opacity:0.7}}>Viewing:</span> {getTrackerFormattedDate()}
+                  </div>
+
+                  <div style={{display:'grid',gap:14}}>
+                    {/* Breakfast Card */}
+                    <div style={{
+                      background:'linear-gradient(135deg, #fff5f5 0%, #ffe8e8 100%)',
+                      borderRadius:16,
+                      padding:18,
+                      border:'2px solid #fecaca',
+                      boxShadow:'0 4px 12px rgba(254,202,202,0.3)',
+                      transition:'all 0.3s ease'
+                    }}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+                        <div style={{display:'flex',alignItems:'center',gap:10}}>
+                          <div style={{
+                            width:40,
+                            height:40,
+                            borderRadius:10,
+                            background:'linear-gradient(135deg, #fb923c 0%, #f97316 100%)',
+                            display:'flex',
+                            alignItems:'center',
+                            justifyContent:'center',
+                            fontSize:20,
+                            boxShadow:'0 4px 8px rgba(251,146,60,0.3)'
+                          }}>
+                            🌅
+                          </div>
+                          <div>
+                            <div style={{fontSize:16,fontWeight:700,color:'#7c2d12'}}>Breakfast</div>
+                            <div style={{fontSize:12,color:'#9a3412',opacity:0.8}}>{calorieData.meal_split_percentages.breakfast}% of daily • Morning fuel & energy</div>
+                          </div>
+                        </div>
+                        <div style={{textAlign:'right'}}>
+                          <div style={{fontSize:20,fontWeight:700,color:'#ea580c'}}>
+                            {consumedCalories.breakfast}<span style={{fontSize:14,color:'#9a3412',opacity:0.7}}>/{calorieData.meal_calories.breakfast}</span>
+                          </div>
+                          <div style={{fontSize:11,color:'#9a3412',opacity:0.7}}>kcal consumed</div>
+                        </div>
+                      </div>
+                      
+                      <div style={{position:'relative',height:28,background:'rgba(251,146,60,0.15)',borderRadius:14,overflow:'hidden',border:'1px solid rgba(251,146,60,0.2)'}}>
+                        <div style={{
+                          position:'absolute',
+                          top:0,
+                          left:0,
+                          height:'100%',
+                          width:`${Math.min((consumedCalories.breakfast / calorieData.meal_calories.breakfast) * 100, 100)}%`,
+                          background: consumedCalories.breakfast > calorieData.meal_calories.breakfast 
+                            ? 'linear-gradient(90deg, #dc2626 0%, #991b1b 100%)' 
+                            : 'linear-gradient(90deg, #fb923c 0%, #f97316 100%)',
+                          borderRadius:14,
+                          transition:'width 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+                          boxShadow:'inset 0 2px 4px rgba(0,0,0,0.1), 0 0 12px rgba(251,146,60,0.4)'
+                        }}>
+                          <div style={{
+                            position:'absolute',
+                            top:0,
+                            left:0,
+                            right:0,
+                            height:'50%',
+                            background:'linear-gradient(180deg, rgba(255,255,255,0.3) 0%, transparent 100%)',
+                            borderRadius:'14px 14px 0 0'
+                          }} />
+                        </div>
+                        <div style={{
+                          position:'absolute',
+                          top:'50%',
+                          left:12,
+                          transform:'translateY(-50%)',
+                          fontSize:12,
+                          fontWeight:700,
+                          color:consumedCalories.breakfast > calorieData.meal_calories.breakfast * 0.3 ? '#fff' : '#7c2d12',
+                          textShadow:consumedCalories.breakfast > calorieData.meal_calories.breakfast * 0.3 ? '0 1px 2px rgba(0,0,0,0.3)' : 'none',
+                          zIndex:10
+                        }}>
+                          {Math.round((consumedCalories.breakfast / calorieData.meal_calories.breakfast) * 100)}% consumed
+                        </div>
+                      </div>
+
+                      <div style={{display:'flex',justifyContent:'space-between',marginTop:10,fontSize:12}}>
+                        <div style={{color:'#9a3412',display:'flex',alignItems:'center',gap:4}}>
+                          ✅ <span style={{fontWeight:600}}>Over by {consumedCalories.breakfast > calorieData.meal_calories.breakfast ? (consumedCalories.breakfast - calorieData.meal_calories.breakfast) : 0} kcal</span>
+                        </div>
+                        <div style={{color:'#15803d',fontWeight:600}}>
+                          📊 {calorieData.meal_calories.breakfast - consumedCalories.breakfast > 0 ? (calorieData.meal_calories.breakfast - consumedCalories.breakfast) : 0} kcal remaining
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Lunch Card */}
+                    <div style={{
+                      background:'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+                      borderRadius:16,
+                      padding:18,
+                      border:'2px solid #bfdbfe',
+                      boxShadow:'0 4px 12px rgba(191,219,254,0.3)',
+                      transition:'all 0.3s ease'
+                    }}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+                        <div style={{display:'flex',alignItems:'center',gap:10}}>
+                          <div style={{
+                            width:40,
+                            height:40,
+                            borderRadius:10,
+                            background:'linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%)',
+                            display:'flex',
+                            alignItems:'center',
+                            justifyContent:'center',
+                            fontSize:20,
+                            boxShadow:'0 4px 8px rgba(59,130,246,0.3)'
+                          }}>
+                            ☀️
+                          </div>
+                          <div>
+                            <div style={{fontSize:16,fontWeight:700,color:'#1e3a8a'}}>Lunch</div>
+                            <div style={{fontSize:12,color:'#1e40af',opacity:0.8}}>{calorieData.meal_split_percentages.lunch}% of daily • Main meal & nutrition</div>
+                          </div>
+                        </div>
+                        <div style={{textAlign:'right'}}>
+                          <div style={{fontSize:20,fontWeight:700,color:'#2563eb'}}>
+                            {consumedCalories.lunch}<span style={{fontSize:14,color:'#1e40af',opacity:0.7}}>/{calorieData.meal_calories.lunch}</span>
+                          </div>
+                          <div style={{fontSize:11,color:'#1e40af',opacity:0.7}}>kcal consumed</div>
+                        </div>
+                      </div>
+                      
+                      <div style={{position:'relative',height:28,background:'rgba(59,130,246,0.15)',borderRadius:14,overflow:'hidden',border:'1px solid rgba(59,130,246,0.2)'}}>
+                        <div style={{
+                          position:'absolute',
+                          top:0,
+                          left:0,
+                          height:'100%',
+                          width:`${Math.min((consumedCalories.lunch / calorieData.meal_calories.lunch) * 100, 100)}%`,
+                          background: consumedCalories.lunch > calorieData.meal_calories.lunch 
+                            ? 'linear-gradient(90deg, #dc2626 0%, #991b1b 100%)' 
+                            : 'linear-gradient(90deg, #60a5fa 0%, #3b82f6 100%)',
+                          borderRadius:14,
+                          transition:'width 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+                          boxShadow:'inset 0 2px 4px rgba(0,0,0,0.1), 0 0 12px rgba(59,130,246,0.4)'
+                        }}>
+                          <div style={{
+                            position:'absolute',
+                            top:0,
+                            left:0,
+                            right:0,
+                            height:'50%',
+                            background:'linear-gradient(180deg, rgba(255,255,255,0.3) 0%, transparent 100%)',
+                            borderRadius:'14px 14px 0 0'
+                          }} />
+                        </div>
+                        <div style={{
+                          position:'absolute',
+                          top:'50%',
+                          left:12,
+                          transform:'translateY(-50%)',
+                          fontSize:12,
+                          fontWeight:700,
+                          color:consumedCalories.lunch > calorieData.meal_calories.lunch * 0.3 ? '#fff' : '#1e3a8a',
+                          textShadow:consumedCalories.lunch > calorieData.meal_calories.lunch * 0.3 ? '0 1px 2px rgba(0,0,0,0.3)' : 'none',
+                          zIndex:10
+                        }}>
+                          {Math.round((consumedCalories.lunch / calorieData.meal_calories.lunch) * 100)}% consumed
+                        </div>
+                      </div>
+
+                      <div style={{display:'flex',justifyContent:'space-between',marginTop:10,fontSize:12}}>
+                        <div style={{color:'#1e40af',display:'flex',alignItems:'center',gap:4}}>
+                          {consumedCalories.lunch > calorieData.meal_calories.lunch ? '⚠️' : '✅'} <span style={{fontWeight:600}}>On track</span>
+                        </div>
+                        <div style={{color:'#15803d',fontWeight:600}}>
+                          📊 {calorieData.meal_calories.lunch - consumedCalories.lunch > 0 ? (calorieData.meal_calories.lunch - consumedCalories.lunch) : 0} kcal remaining
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Evening Snack Card */}
+                    <div style={{
+                      background:'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
+                      borderRadius:16,
+                      padding:18,
+                      border:'2px solid #bbf7d0',
+                      boxShadow:'0 4px 12px rgba(187,247,208,0.3)',
+                      transition:'all 0.3s ease'
+                    }}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+                        <div style={{display:'flex',alignItems:'center',gap:10}}>
+                          <div style={{
+                            width:40,
+                            height:40,
+                            borderRadius:10,
+                            background:'linear-gradient(135deg, #34d399 0%, #10b981 100%)',
+                            display:'flex',
+                            alignItems:'center',
+                            justifyContent:'center',
+                            fontSize:20,
+                            boxShadow:'0 4px 8px rgba(16,185,129,0.3)'
+                          }}>
+                            🍵
+                          </div>
+                          <div>
+                            <div style={{fontSize:16,fontWeight:700,color:'#064e3b'}}>Evening Snack</div>
+                            <div style={{fontSize:12,color:'#065f46',opacity:0.8}}>{calorieData.meal_split_percentages.evening_snack}% of daily • Light refreshment</div>
+                          </div>
+                        </div>
+                        <div style={{textAlign:'right'}}>
+                          <div style={{fontSize:20,fontWeight:700,color:'#059669'}}>
+                            {consumedCalories.evening_snack}<span style={{fontSize:14,color:'#065f46',opacity:0.7}}>/{calorieData.meal_calories.evening_snack}</span>
+                          </div>
+                          <div style={{fontSize:11,color:'#065f46',opacity:0.7}}>kcal consumed</div>
+                        </div>
+                      </div>
+                      
+                      <div style={{position:'relative',height:28,background:'rgba(16,185,129,0.15)',borderRadius:14,overflow:'hidden',border:'1px solid rgba(16,185,129,0.2)'}}>
+                        <div style={{
+                          position:'absolute',
+                          top:0,
+                          left:0,
+                          height:'100%',
+                          width:`${Math.min((consumedCalories.evening_snack / calorieData.meal_calories.evening_snack) * 100, 100)}%`,
+                          background: consumedCalories.evening_snack > calorieData.meal_calories.evening_snack 
+                            ? 'linear-gradient(90deg, #dc2626 0%, #991b1b 100%)' 
+                            : 'linear-gradient(90deg, #34d399 0%, #10b981 100%)',
+                          borderRadius:14,
+                          transition:'width 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+                          boxShadow:'inset 0 2px 4px rgba(0,0,0,0.1), 0 0 12px rgba(16,185,129,0.4)'
+                        }}>
+                          <div style={{
+                            position:'absolute',
+                            top:0,
+                            left:0,
+                            right:0,
+                            height:'50%',
+                            background:'linear-gradient(180deg, rgba(255,255,255,0.3) 0%, transparent 100%)',
+                            borderRadius:'14px 14px 0 0'
+                          }} />
+                        </div>
+                        <div style={{
+                          position:'absolute',
+                          top:'50%',
+                          left:12,
+                          transform:'translateY(-50%)',
+                          fontSize:12,
+                          fontWeight:700,
+                          color:consumedCalories.evening_snack > calorieData.meal_calories.evening_snack * 0.3 ? '#fff' : '#064e3b',
+                          textShadow:consumedCalories.evening_snack > calorieData.meal_calories.evening_snack * 0.3 ? '0 1px 2px rgba(0,0,0,0.3)' : 'none',
+                          zIndex:10
+                        }}>
+                          {Math.round((consumedCalories.evening_snack / calorieData.meal_calories.evening_snack) * 100)}% consumed
+                        </div>
+                      </div>
+
+                      <div style={{display:'flex',justifyContent:'space-between',marginTop:10,fontSize:12}}>
+                        <div style={{color:'#065f46',display:'flex',alignItems:'center',gap:4}}>
+                          {consumedCalories.evening_snack > calorieData.meal_calories.evening_snack ? '⚠️' : '✅'} <span style={{fontWeight:600}}>On track</span>
+                        </div>
+                        <div style={{color:'#15803d',fontWeight:600}}>
+                          📊 {calorieData.meal_calories.evening_snack - consumedCalories.evening_snack > 0 ? (calorieData.meal_calories.evening_snack - consumedCalories.evening_snack) : 0} kcal remaining
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Dinner Card */}
+                    <div style={{
+                      background:'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)',
+                      borderRadius:16,
+                      padding:18,
+                      border:'2px solid #ddd6fe',
+                      boxShadow:'0 4px 12px rgba(221,214,254,0.3)',
+                      transition:'all 0.3s ease'
+                    }}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+                        <div style={{display:'flex',alignItems:'center',gap:10}}>
+                          <div style={{
+                            width:40,
+                            height:40,
+                            borderRadius:10,
+                            background:'linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%)',
+                            display:'flex',
+                            alignItems:'center',
+                            justifyContent:'center',
+                            fontSize:20,
+                            boxShadow:'0 4px 8px rgba(139,92,246,0.3)'
+                          }}>
+                            🌙
+                          </div>
+                          <div>
+                            <div style={{fontSize:16,fontWeight:700,color:'#4c1d95'}}>Dinner</div>
+                            <div style={{fontSize:12,color:'#5b21b6',opacity:0.8}}>{calorieData.meal_split_percentages.dinner}% of daily • Evening meal</div>
+                          </div>
+                        </div>
+                        <div style={{textAlign:'right'}}>
+                          <div style={{fontSize:20,fontWeight:700,color:'#7c3aed'}}>
+                            {consumedCalories.dinner}<span style={{fontSize:14,color:'#5b21b6',opacity:0.7}}>/{calorieData.meal_calories.dinner}</span>
+                          </div>
+                          <div style={{fontSize:11,color:'#5b21b6',opacity:0.7}}>kcal consumed</div>
+                        </div>
+                      </div>
+                      
+                      <div style={{position:'relative',height:28,background:'rgba(139,92,246,0.15)',borderRadius:14,overflow:'hidden',border:'1px solid rgba(139,92,246,0.2)'}}>
+                        <div style={{
+                          position:'absolute',
+                          top:0,
+                          left:0,
+                          height:'100%',
+                          width:`${Math.min((consumedCalories.dinner / calorieData.meal_calories.dinner) * 100, 100)}%`,
+                          background: consumedCalories.dinner > calorieData.meal_calories.dinner 
+                            ? 'linear-gradient(90deg, #dc2626 0%, #991b1b 100%)' 
+                            : 'linear-gradient(90deg, #a78bfa 0%, #8b5cf6 100%)',
+                          borderRadius:14,
+                          transition:'width 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+                          boxShadow:'inset 0 2px 4px rgba(0,0,0,0.1), 0 0 12px rgba(139,92,246,0.4)'
+                        }}>
+                          <div style={{
+                            position:'absolute',
+                            top:0,
+                            left:0,
+                            right:0,
+                            height:'50%',
+                            background:'linear-gradient(180deg, rgba(255,255,255,0.3) 0%, transparent 100%)',
+                            borderRadius:'14px 14px 0 0'
+                          }} />
+                        </div>
+                        <div style={{
+                          position:'absolute',
+                          top:'50%',
+                          left:12,
+                          transform:'translateY(-50%)',
+                          fontSize:12,
+                          fontWeight:700,
+                          color:consumedCalories.dinner > calorieData.meal_calories.dinner * 0.3 ? '#fff' : '#4c1d95',
+                          textShadow:consumedCalories.dinner > calorieData.meal_calories.dinner * 0.3 ? '0 1px 2px rgba(0,0,0,0.3)' : 'none',
+                          zIndex:10
+                        }}>
+                          {Math.round((consumedCalories.dinner / calorieData.meal_calories.dinner) * 100)}% consumed
+                        </div>
+                      </div>
+
+                      <div style={{display:'flex',justifyContent:'space-between',marginTop:10,fontSize:12}}>
+                        <div style={{color:'#5b21b6',display:'flex',alignItems:'center',gap:4}}>
+                          {consumedCalories.dinner > calorieData.meal_calories.dinner ? '⚠️' : '✅'} <span style={{fontWeight:600}}>On track</span>
+                        </div>
+                        <div style={{color:'#15803d',fontWeight:600}}>
+                          📊 {calorieData.meal_calories.dinner - consumedCalories.dinner > 0 ? (calorieData.meal_calories.dinner - consumedCalories.dinner) : 0} kcal remaining
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Total Daily Summary Card */}
+                  <div style={{
+                    marginTop:20,
+                    background:'linear-gradient(135deg, #fefce8 0%, #fef9c3 100%)',
+                    borderRadius:20,
+                    padding:24,
+                    border:'3px solid #fbbf24',
+                    boxShadow:'0 8px 24px rgba(251,191,36,0.25), 0 0 0 1px rgba(251,191,36,0.1)',
+                    position:'relative',
+                    overflow:'hidden'
+                  }}>
+                    {/* Decorative elements */}
+                    <div style={{
+                      position:'absolute',
+                      top:-20,
+                      right:-20,
+                      width:100,
+                      height:100,
+                      borderRadius:'50%',
+                      background:'radial-gradient(circle, rgba(251,191,36,0.2) 0%, transparent 70%)',
+                      pointerEvents:'none'
+                    }} />
+                    <div style={{
+                      position:'absolute',
+                      bottom:-30,
+                      left:-30,
+                      width:120,
+                      height:120,
+                      borderRadius:'50%',
+                      background:'radial-gradient(circle, rgba(251,191,36,0.15) 0%, transparent 70%)',
+                      pointerEvents:'none'
+                    }} />
+
+                    <div style={{position:'relative',zIndex:1}}>
+                      {/* Header */}
+                      <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:20}}>
+                        <div style={{
+                          width:48,
+                          height:48,
+                          borderRadius:12,
+                          background:'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)',
+                          display:'flex',
+                          alignItems:'center',
+                          justifyContent:'center',
+                          fontSize:24,
+                          boxShadow:'0 4px 12px rgba(251,191,36,0.4)'
+                        }}>
+                          📊
+                        </div>
+                        <div>
+                          <h3 style={{margin:0,fontSize:18,fontWeight:700,color:'#78350f'}}>Daily Calorie Summary</h3>
+                          <div style={{fontSize:13,color:'#92400e',opacity:0.8}}>Track your overall progress</div>
+                        </div>
+                      </div>
+
+                      {/* Stats Grid */}
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:16,marginBottom:20}}>
+                        {/* Total Consumed */}
+                        <div style={{background:'rgba(255,255,255,0.7)',borderRadius:12,padding:16,border:'2px solid #fde047',backdropFilter:'blur(10px)'}}>
+                          <div style={{fontSize:12,color:'#92400e',fontWeight:600,marginBottom:6,display:'flex',alignItems:'center',gap:4}}>
+                            🔥 <span>Consumed</span>
+                          </div>
+                          <div style={{fontSize:26,fontWeight:700,color:'#ea580c',lineHeight:1}}>
+                            {consumedCalories.breakfast + consumedCalories.lunch + consumedCalories.evening_snack + consumedCalories.dinner}
+                          </div>
+                          <div style={{fontSize:11,color:'#92400e',opacity:0.7,marginTop:4}}>kcal eaten</div>
+                        </div>
+
+                        {/* Daily Target */}
+                        <div style={{background:'rgba(255,255,255,0.7)',borderRadius:12,padding:16,border:'2px solid #fde047',backdropFilter:'blur(10px)'}}>
+                          <div style={{fontSize:12,color:'#92400e',fontWeight:600,marginBottom:6,display:'flex',alignItems:'center',gap:4}}>
+                            🎯 <span>Target</span>
+                          </div>
+                          <div style={{fontSize:26,fontWeight:700,color:'#0ea5e9',lineHeight:1}}>
+                            {calorieData.daily_calories}
+                          </div>
+                          <div style={{fontSize:11,color:'#92400e',opacity:0.7,marginTop:4}}>kcal goal</div>
+                        </div>
+
+                        {/* Remaining */}
+                        <div style={{background:'rgba(255,255,255,0.7)',borderRadius:12,padding:16,border:'2px solid #fde047',backdropFilter:'blur(10px)'}}>
+                          <div style={{fontSize:12,color:'#92400e',fontWeight:600,marginBottom:6,display:'flex',alignItems:'center',gap:4}}>
+                            {calorieData.daily_calories - (consumedCalories.breakfast + consumedCalories.lunch + consumedCalories.evening_snack + consumedCalories.dinner) >= 0 ? '✅' : '⚠️'} <span>Remaining</span>
+                          </div>
+                          <div style={{fontSize:26,fontWeight:700,color:calorieData.daily_calories - (consumedCalories.breakfast + consumedCalories.lunch + consumedCalories.evening_snack + consumedCalories.dinner) >= 0 ? '#10b981' : '#ef4444',lineHeight:1}}>
+                            {Math.abs(calorieData.daily_calories - (consumedCalories.breakfast + consumedCalories.lunch + consumedCalories.evening_snack + consumedCalories.dinner))}
+                          </div>
+                          <div style={{fontSize:11,color:'#92400e',opacity:0.7,marginTop:4}}>
+                            {calorieData.daily_calories - (consumedCalories.breakfast + consumedCalories.lunch + consumedCalories.evening_snack + consumedCalories.dinner) >= 0 ? 'kcal left' : 'kcal over'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Overall Progress Bar */}
+                      <div>
+                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                          <span style={{fontSize:13,fontWeight:600,color:'#78350f'}}>Overall Daily Progress</span>
+                          <span style={{fontSize:13,fontWeight:700,color:'#ea580c'}}>
+                            {Math.round(((consumedCalories.breakfast + consumedCalories.lunch + consumedCalories.evening_snack + consumedCalories.dinner) / calorieData.daily_calories) * 100)}%
+                          </span>
+                        </div>
+                        <div style={{
+                          position:'relative',
+                          height:32,
+                          background:'rgba(251,191,36,0.2)',
+                          borderRadius:16,
+                          overflow:'hidden',
+                          border:'2px solid rgba(251,191,36,0.3)'
+                        }}>
+                          <div style={{
+                            position:'absolute',
+                            top:0,
+                            left:0,
+                            height:'100%',
+                            width:`${Math.min(((consumedCalories.breakfast + consumedCalories.lunch + consumedCalories.evening_snack + consumedCalories.dinner) / calorieData.daily_calories) * 100, 100)}%`,
+                            background: (consumedCalories.breakfast + consumedCalories.lunch + consumedCalories.evening_snack + consumedCalories.dinner) > calorieData.daily_calories
+                              ? 'linear-gradient(90deg, #ef4444 0%, #dc2626 100%)'
+                              : 'linear-gradient(90deg, #fbbf24 0%, #f59e0b 100%)',
+                            borderRadius:16,
+                            transition:'width 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+                            boxShadow:'inset 0 2px 4px rgba(0,0,0,0.1), 0 0 16px rgba(251,191,36,0.5)'
+                          }}>
+                            {/* Glossy overlay */}
+                            <div style={{
+                              position:'absolute',
+                              top:0,
+                              left:0,
+                              right:0,
+                              height:'50%',
+                              background:'linear-gradient(180deg, rgba(255,255,255,0.4) 0%, transparent 100%)',
+                              borderRadius:'16px 16px 0 0'
+                            }} />
+                            {/* Animated shimmer effect */}
+                            <div style={{
+                              position:'absolute',
+                              top:0,
+                              left:'-100%',
+                              width:'100%',
+                              height:'100%',
+                              background:'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.3) 50%, transparent 100%)',
+                              animation:'shimmer 2s infinite',
+                              borderRadius:16
+                            }} />
+                          </div>
+                        </div>
+
+                        {/* Status message */}
+                        <div style={{marginTop:12,textAlign:'center'}}>
+                          {(consumedCalories.breakfast + consumedCalories.lunch + consumedCalories.evening_snack + consumedCalories.dinner) > calorieData.daily_calories ? (
+                            <div style={{
+                              display:'inline-flex',
+                              alignItems:'center',
+                              gap:6,
+                              padding:'8px 16px',
+                              background:'rgba(239,68,68,0.1)',
+                              borderRadius:20,
+                              border:'1px solid rgba(239,68,68,0.3)'
+                            }}>
+                              <span style={{fontSize:16}}>⚠️</span>
+                              <span style={{fontSize:13,fontWeight:600,color:'#991b1b'}}>
+                                You've exceeded your daily target by {(consumedCalories.breakfast + consumedCalories.lunch + consumedCalories.evening_snack + consumedCalories.dinner) - calorieData.daily_calories} kcal
+                              </span>
+                            </div>
+                          ) : (consumedCalories.breakfast + consumedCalories.lunch + consumedCalories.evening_snack + consumedCalories.dinner) >= calorieData.daily_calories * 0.8 ? (
+                            <div style={{
+                              display:'inline-flex',
+                              alignItems:'center',
+                              gap:6,
+                              padding:'8px 16px',
+                              background:'rgba(16,185,129,0.1)',
+                              borderRadius:20,
+                              border:'1px solid rgba(16,185,129,0.3)'
+                            }}>
+                              <span style={{fontSize:16}}>🎉</span>
+                              <span style={{fontSize:13,fontWeight:600,color:'#065f46'}}>
+                                Great progress! You're on track to meet your daily goal
+                              </span>
+                            </div>
+                          ) : (
+                            <div style={{
+                              display:'inline-flex',
+                              alignItems:'center',
+                              gap:6,
+                              padding:'8px 16px',
+                              background:'rgba(59,130,246,0.1)',
+                              borderRadius:20,
+                              border:'1px solid rgba(59,130,246,0.3)'
+                            }}>
+                              <span style={{fontSize:16}}>💪</span>
+                              <span style={{fontSize:13,fontWeight:600,color:'#1e40af'}}>
+                                Keep going! You have plenty of calories remaining for today
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <style>{`
+                  @keyframes shimmer {
+                    0% { left: -100%; }
+                    100% { left: 100%; }
+                  }
+                `}</style>
+
+                {/* Personalized Insights */}
+                <div className="card" style={{marginBottom:20,background:'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',border:'2px solid #f59e0b'}}>
+                  <h3 style={{margin:0,marginBottom:16,color:'#92400e',display:'flex',alignItems:'center',gap:8}}>
+                    <span style={{fontSize:24}}>💡</span>
+                    <span>Personalized Insights</span>
+                  </h3>
+                  <div style={{display:'grid',gap:12}}>
+                    {calorieData.insights.tips.map((tip: string, idx: number) => (
+                      <div key={idx} style={{fontSize:14,color:'#92400e',lineHeight:1.7,paddingLeft:20,position:'relative',background:'rgba(255,255,255,0.5)',padding:12,borderRadius:8}}>
+                        <span style={{position:'absolute',left:12,fontSize:16}}>✓</span>
+                        {tip}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Health Metrics */}
+                <div className="card" style={{marginBottom:20}}>
+                  <h3 style={{margin:0,marginBottom:16,color:'#374151'}}>📈 Health Metrics</h3>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(180px, 1fr))',gap:16}}>
+                    <div style={{padding:16,background:'#f0fdf4',borderRadius:10,border:'1px solid #86efac'}}>
+                      <div style={{fontSize:13,fontWeight:600,color:'#065f46',marginBottom:6}}>BMI (Body Mass Index)</div>
+                      <div style={{fontSize:28,fontWeight:700,color:'#10b981'}}>{calorieData.insights.bmi}</div>
+                      <div style={{fontSize:12,color:'#6b7280',marginTop:4}}>Indian Standards</div>
+                    </div>
+                    
+                    <div style={{padding:16,background:'#eff6ff',borderRadius:10,border:'1px solid #93c5fd'}}>
+                      <div style={{fontSize:13,fontWeight:600,color:'#1e40af',marginBottom:6}}>Daily Water Goal</div>
+                      <div style={{fontSize:28,fontWeight:700,color:'#3b82f6'}}>{calorieData.insights.water_intake_liters}L</div>
+                      <div style={{fontSize:12,color:'#6b7280',marginTop:4}}>per day</div>
+                    </div>
+                    
+                    <div style={{padding:16,background:calorieData.insights.estimated_weekly_change_kg < 0 ? '#f0fdf4' : '#eff6ff',borderRadius:10,border:calorieData.insights.estimated_weekly_change_kg < 0 ? '1px solid #86efac' : '1px solid #93c5fd'}}>
+                      <div style={{fontSize:13,fontWeight:600,color:'#374151',marginBottom:6}}>Est. Weekly Change</div>
+                      <div style={{fontSize:28,fontWeight:700,color:calorieData.insights.estimated_weekly_change_kg < 0 ? '#059669' : '#2563eb'}}>
+                        {calorieData.insights.estimated_weekly_change_kg > 0 ? '+' : ''}{calorieData.insights.estimated_weekly_change_kg}kg
+                      </div>
+                      <div style={{fontSize:12,color:'#6b7280',marginTop:4}}>
+                        {calorieData.insights.estimated_weekly_change_kg < 0 ? 'Weight loss' : 'Weight gain'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* How It Works */}
+                <div className="card" style={{background:'#f8fafc',border:'1px solid #e5e7eb'}}>
+                  <h3 style={{margin:0,marginBottom:16,color:'#374151'}}>🔬 How We Calculate Your Plan</h3>
+                  <div style={{display:'grid',gap:12}}>
+                    <div style={{padding:12,background:'#fff',borderRadius:8,borderLeft:'4px solid #667eea'}}>
+                      <div style={{fontWeight:600,fontSize:14,color:'#667eea',marginBottom:4}}>1. BMR Calculation (Mifflin-St Jeor)</div>
+                      <div style={{fontSize:13,color:'#6b7280',lineHeight:1.6}}>
+                        Your Basal Metabolic Rate is the calories your body burns at rest. Calculated using your weight, height, age, and gender.
+                      </div>
+                    </div>
+                    
+                    <div style={{padding:12,background:'#fff',borderRadius:8,borderLeft:'4px solid #10b981'}}>
+                      <div style={{fontWeight:600,fontSize:14,color:'#10b981',marginBottom:4}}>2. Activity Multiplier</div>
+                      <div style={{fontSize:13,color:'#6b7280',lineHeight:1.6}}>
+                        BMR × Activity Level = TDEE (Total Daily Energy Expenditure). This is what you need to maintain your current weight.
+                      </div>
+                    </div>
+                    
+                    <div style={{padding:12,background:'#fff',borderRadius:8,borderLeft:'4px solid #f59e0b'}}>
+                      <div style={{fontWeight:600,fontSize:14,color:'#f59e0b',marginBottom:4}}>3. Goal Adjustment</div>
+                      <div style={{fontSize:13,color:'#6b7280',lineHeight:1.6}}>
+                        Based on your health goal (lose/gain weight or maintain), we adjust your TDEE to create a sustainable calorie target.
+                      </div>
+                    </div>
+                    
+                    <div style={{padding:12,background:'#fff',borderRadius:8,borderLeft:'4px solid #ec4899'}}>
+                      <div style={{fontWeight:600,fontSize:14,color:'#ec4899',marginBottom:4}}>4. Macro Distribution</div>
+                      <div style={{fontSize:13,color:'#6b7280',lineHeight:1.6}}>
+                        Optimal protein, carbs, and fat ratios based on your goal. Protein for muscle, carbs for energy, healthy fats for hormones.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="card" style={{textAlign:'center',padding:40}}>
+                <div style={{fontSize:48,marginBottom:16}}>🤖</div>
+                <h3 style={{color:'#667eea',marginBottom:12}}>No AI Calorie Plan Yet</h3>
+                <div style={{color:'#6b7280',marginBottom:24,fontSize:15}}>
+                  Complete your profile to get your personalized AI-powered calorie plan
+                </div>
+                <button
+                  onClick={() => setView('settings')}
+                  className="btn"
+                  style={{background:'#667eea',color:'#fff',padding:'12px 24px',fontSize:15,fontWeight:600}}
+                >
+                  Complete Profile
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {view === 'gamification' && (
           <div>
             <h3>Gamification</h3>
@@ -2873,16 +3606,6 @@ const App: React.FC = () => {
                 )}
               </div>
 
-              {/* Success/Error Messages */}
-              {profileSuccess && (
-                <div style={{background:'#d1fae5',color:'#065f46',padding:'10px 12px',borderRadius:8,marginTop:16,fontSize:14}}>
-                  ✓ {profileSuccess}
-                </div>
-              )}
-              {profileError && (
-                <div className="error-msg" style={{marginTop:16}}>{profileError}</div>
-              )}
-
               {/* Edit Profile Form */}
               {isEditingProfile && (
                 <div style={{background:'#f8fafc',padding:16,borderRadius:8,marginTop:16}}>
@@ -3056,6 +3779,17 @@ const App: React.FC = () => {
                         </div>
                       </div>
                     </div>
+
+                    {/* Success/Error Messages */}
+                    {profileSuccess && (
+                      <div style={{background:'#d1fae5',color:'#065f46',padding:'10px 12px',borderRadius:8,marginTop:12,fontSize:14}}>
+                        ✓ {profileSuccess}
+                      </div>
+                    )}
+                    {profileError && (
+                      <div className="error-msg" style={{marginTop:12}}>{profileError}</div>
+                    )}
+
                     <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:8}}>
                       <button 
                         className="btn" 
@@ -3273,9 +4007,13 @@ const App: React.FC = () => {
                       ).slice(0, 8);
                       setFilteredDishes(matches);
                       setShowSuggestions(matches.length > 0);
+                    } else {
+                      // Show all dishes when clicking without text
+                      setFilteredDishes(dishes.slice(0, 10));
+                      setShowSuggestions(true);
                     }
                   }}
-                  placeholder="Start typing to see suggestions..."
+                  placeholder="Type dish name or click to browse..."
                   style={{width:'100%'}}
                 />
                 {showSuggestions && filteredDishes.length > 0 && (
@@ -3293,6 +4031,18 @@ const App: React.FC = () => {
                     boxShadow:'0 4px 12px rgba(0,0,0,0.1)',
                     zIndex:1000
                   }}>
+                    <div style={{
+                      padding:'8px 12px',
+                      background:'#f8fafc',
+                      borderBottom:'2px solid #e5e7eb',
+                      fontSize:12,
+                      fontWeight:600,
+                      color:'#6b7280',
+                      position:'sticky',
+                      top:0
+                    }}>
+                      {filteredDishes.length === dishes.length ? 'All Dishes' : `${filteredDishes.length} dishes found`}
+                    </div>
                     {filteredDishes.map((dish, idx) => (
                       <div
                         key={idx}
@@ -3350,28 +4100,322 @@ const App: React.FC = () => {
                 <input type="number" value={form.fat} onChange={(e)=>setForm({...form,fat:e.target.value})} />
               </div>
 
-              <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:8}}>
-                <button className="btn" onClick={async ()=>{
-                  const payload:any = {
-                    name: form.name || 'Meal',
-                    serving_size: Number(form.serving_size) || 0,
-                    unit: form.unit || 'g',
-                    meal_type: form.meal_type || 'Breakfast'
-                  };
-                  if (form.calories !== '') payload.calories = Number(form.calories);
-                  if (form.protein !== '') payload.protein = Number(form.protein);
-                  if (form.carbs !== '') payload.carbs = Number(form.carbs);
-                  if (form.fat !== '') payload.fat = Number(form.fat);
-                  await submitMeal(payload);
-                }}>{logging ? 'Logging...' : 'Save'}</button>
-                <button className="btn" style={{background:'#ef4444'}} onClick={()=>{ if(!logging)setShowLogger(false); }}>Cancel</button>
+              <div style={{display:'flex',gap:8,justifyContent:'space-between',marginTop:16,paddingTop:16,borderTop:'2px solid #e5e7eb'}}>
+                <button 
+                  className="btn" 
+                  onClick={()=>{
+                    // Add current form to meals list
+                    if (!form.name.trim()) {
+                      setLogError('Please enter a meal name');
+                      return;
+                    }
+                    const newMeal = {
+                      id: Date.now(),
+                      name: form.name,
+                      serving_size: form.serving_size,
+                      unit: form.unit,
+                      calories: form.calories,
+                      protein: form.protein,
+                      carbs: form.carbs,
+                      fat: form.fat
+                    };
+                    setMealsList([...mealsList, newMeal]);
+                    // Reset form
+                    setForm({ name: '', serving_size: 100, unit: 'g', calories: '', protein: '', carbs: '', fat: '', meal_type: form.meal_type });
+                    setBaseServing(100);
+                    setBaseNutrition(null);
+                    setLogError(null);
+                  }}
+                  style={{background:'#10b981',flex:1}}
+                  disabled={logging}
+                >
+                  + Add More
+                </button>
+                <button 
+                  className="btn" 
+                  onClick={async ()=>{
+                    if (!form.name.trim() && mealsList.length === 0) {
+                      setLogError('Please add at least one meal');
+                      return;
+                    }
+                    
+                    setLogging(true);
+                    setLogError(null);
+                    
+                    try {
+                      // Add current form if filled
+                      let mealsToLog = [...mealsList];
+                      if (form.name.trim()) {
+                        mealsToLog.push({
+                          id: Date.now(),
+                          name: form.name,
+                          serving_size: form.serving_size,
+                          unit: form.unit,
+                          calories: form.calories,
+                          protein: form.protein,
+                          carbs: form.carbs,
+                          fat: form.fat
+                        });
+                      }
+                      
+                      // Log all meals
+                      for (const meal of mealsToLog) {
+                        const payload: any = {
+                          name: meal.name || 'Meal',
+                          serving_size: Number(meal.serving_size) || 0,
+                          unit: meal.unit || 'g',
+                          meal_type: form.meal_type || 'Breakfast'
+                        };
+                        if (meal.calories !== '') payload.calories = Number(meal.calories);
+                        if (meal.protein !== '') payload.protein = Number(meal.protein);
+                        if (meal.carbs !== '') payload.carbs = Number(meal.carbs);
+                        if (meal.fat !== '') payload.fat = Number(meal.fat);
+                        
+                        const headers: any = { 'Content-Type': 'application/json' };
+                        if (token) headers['Authorization'] = `Bearer ${token}`;
+                        
+                        await fetch(`${API_BASE}/meals`, { 
+                          method: 'POST', 
+                          headers, 
+                          body: JSON.stringify(payload) 
+                        });
+                      }
+                      
+                      // Refresh data
+                      await loadAll();
+                      
+                      // Reset and close
+                      setShowLogger(false);
+                      setForm({ name:'', serving_size:100, unit:'g', calories:'', protein:'', carbs:'', fat:'', meal_type: 'Breakfast' });
+                      setMealsList([]);
+                      setBaseServing(100);
+                      setBaseNutrition(null);
+                    } catch (err: any) {
+                      setLogError(err?.message ?? 'Failed to log meals');
+                    } finally {
+                      setLogging(false);
+                    }
+                  }}
+                  style={{flex:1}}
+                  disabled={logging}
+                >
+                  {logging ? 'Saving...' : `Save ${mealsList.length > 0 ? `(${mealsList.length + (form.name.trim() ? 1 : 0)} meals)` : ''}`}
+                </button>
+                <button className="btn" style={{background:'#ef4444'}} onClick={()=>{ if(!logging){ setShowLogger(false); setMealsList([]); } }}>Cancel</button>
               </div>
-              {logError && <div style={{color:'#991b1b'}}>{logError}</div>}
+              
+              {/* Show added meals list */}
+              {mealsList.length > 0 && (
+                <div style={{marginTop:16,padding:12,background:'#f0fdf4',border:'1px solid #86efac',borderRadius:8}}>
+                  <div style={{fontSize:13,fontWeight:600,color:'#15803d',marginBottom:8}}>
+                    Meals to log ({mealsList.length}):
+                  </div>
+                  {mealsList.map((meal, idx) => (
+                    <div key={meal.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 8px',background:'#fff',borderRadius:6,marginBottom:4}}>
+                      <div style={{fontSize:13}}>
+                        <strong>{meal.name}</strong> - {meal.serving_size}{meal.unit}
+                        {meal.calories && <span style={{color:'#6b7280',marginLeft:8}}>{meal.calories} kcal</span>}
+                      </div>
+                      <button 
+                        onClick={()=>setMealsList(mealsList.filter(m => m.id !== meal.id))}
+                        style={{background:'#fee2e2',color:'#991b1b',border:'none',padding:'4px 8px',borderRadius:4,cursor:'pointer',fontSize:12}}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {logError && <div style={{color:'#991b1b',marginTop:8,fontSize:13}}>{logError}</div>}
             </div>
           </div>
         </div>
       )}
+
+      {/* Expanded AI Plan Modal - Full screen overlay */}
+      {showExpandedAIPlan && calorieData && (
+        <div 
+          style={{
+            position:'fixed',
+            top:0,
+            left:0,
+            right:0,
+            bottom:0,
+            background:'rgba(0,0,0,0.7)',
+            display:'flex',
+            alignItems:'center',
+            justifyContent:'center',
+            zIndex:9999,
+            padding:20
+          }}
+          onClick={() => setShowExpandedAIPlan(false)}
+        >
+          <div 
+            style={{
+              background:'#fff',
+              borderRadius:20,
+              maxWidth:1200,
+              maxHeight:'90vh',
+              overflow:'auto',
+              position:'relative'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close button */}
+            <button
+              onClick={() => setShowExpandedAIPlan(false)}
+              style={{
+                position:'sticky',
+                top:16,
+                right:16,
+                float:'right',
+                width:36,
+                height:36,
+                borderRadius:'50%',
+                border:'none',
+                background:'#ef4444',
+                color:'#fff',
+                fontSize:20,
+                cursor:'pointer',
+                zIndex:10,
+                boxShadow:'0 4px 12px rgba(239,68,68,0.4)'
+              }}
+            >
+              ×
+            </button>
+
+            {/* Content - Full AI Calorie Plan */}
+            <div style={{padding:32}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'start',marginBottom:24}}>
+                <div>
+                  <h2 style={{margin:0,color:'#667eea',fontSize:28}}>🤖 AI Daily Calorie Plan</h2>
+                  <div style={{fontSize:15,color:'#6b7280',marginTop:6}}>
+                    Scientifically calculated using Mifflin-St Jeor formula
+                  </div>
+                </div>
+                <button
+                  onClick={calculateCalories}
+                  style={{
+                    padding:'10px 18px',
+                    fontSize:14,
+                    background:'#667eea',
+                    color:'#fff',
+                    border:'none',
+                    borderRadius:10,
+                    cursor:'pointer',
+                    fontWeight:600
+                  }}
+                  disabled={calorieLoading}
+                >
+                  {calorieLoading ? 'Calculating...' : '🔄 Refresh'}
+                </button>
+              </div>
+
+              <div style={{fontSize:13,color:'#6b7280',marginBottom:24,textAlign:'center'}}>
+                Calculated {new Date(calorieData.metadata.calculated_at).toLocaleString()} • 
+                Activity: {calorieData.metadata.activity_level.replace('_', ' ')} • 
+                Goal: {calorieData.metadata.health_goal.replace('_', ' ')}
+              </div>
+
+              {/* This would contain the full expanded content - you can copy the entire meal tracker section here */}
+              <div style={{textAlign:'center',padding:40,color:'#6b7280'}}>
+                <p>Full AI Calorie Plan with Meal-wise tracker would go here.</p>
+                <p>You can copy the entire meal distribution section from the original code.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Barcode Scanner Modal */}
+      {showBarcodeScanner && (
+        <BarcodeScanner
+          onScanSuccess={handleBarcodeScanned}
+          onClose={() => setShowBarcodeScanner(false)}
+        />
+      )}
+
+      {/* Barcode Loading Overlay */}
+      {barcodeLoading && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.7)',
+            zIndex: 10001,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
+          <div
+            style={{
+              background: 'white',
+              borderRadius: 20,
+              padding: 40,
+              textAlign: 'center'
+            }}
+          >
+            <div
+              style={{
+                width: 60,
+                height: 60,
+                border: '4px solid #f3f4f6',
+                borderTop: '4px solid #667eea',
+                borderRadius: '50%',
+                margin: '0 auto 20px',
+                animation: 'spin 1s linear infinite'
+              }}
+            />
+            <div style={{ fontSize: 18, fontWeight: 600, color: '#374151' }}>
+              Looking up product...
+            </div>
+            <style>{`
+              @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+              }
+            `}</style>
+          </div>
+        </div>
+      )}
+
+      {/* Barcode Error Notification */}
+      {barcodeError && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 20,
+            right: 20,
+            background: '#fee2e2',
+            color: '#991b1b',
+            padding: '16px 24px',
+            borderRadius: 12,
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+            zIndex: 10002,
+            fontSize: 15,
+            fontWeight: 600,
+            maxWidth: 400
+          }}
+        >
+          {barcodeError}
+        </div>
+      )}
+
+      {/* Food Confirmation Modal */}
+      {scannedFoodData && (
+        <FoodConfirmation
+          foodData={scannedFoodData}
+          onConfirm={handleBarcodeMealConfirm}
+          onCancel={() => setScannedFoodData(null)}
+        />
+      )}
     </div>
+    </>
   );
 };
 
